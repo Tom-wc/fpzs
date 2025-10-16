@@ -1,0 +1,2109 @@
+﻿<!DOCTYPE html>
+<html lang="zh">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self' https: http: data: blob: 'unsafe-inline' 'unsafe-eval'; script-src 'self' https: http: 'unsafe-inline' 'unsafe-eval' blob: data:; style-src 'self' https: http: 'unsafe-inline' blob: data:; img-src * data: blob:; font-src * data: blob:; connect-src * data: blob:; frame-src * data: blob:; object-src * data: blob:; worker-src * blob: data:; child-src * blob: data:; media-src * blob: data:;"
+    />
+    <!-- ====== V3.5.8 新功能：文件复制 + 打印增强 ====== -->
+    <script>
+      (function() {
+        console.log('[V3.5.8] 🚀 初始化文件复制和打印增强功能...');
+        console.log('[V3.5.8] 📋 支持一键复制文件，绕过MD5去重');
+        console.log('[V3.5.8] 🖨️ 增强打印反馈体验');
+        
+        // 存储文件数据
+        window.__fileDebugCache = new Map();
+        let copyCounter = 0;
+        
+        // ========== 拦截 input[type="file"] 的 change 事件 ==========
+        document.addEventListener('change', function(e) {
+          if (e.target && e.target.tagName === 'INPUT' && e.target.type === 'file') {
+            const files = e.target.files;
+            console.log('[复制功能] 📁 检测到文件选择:', files.length, '个文件');
+            
+            for (let i = 0; i < files.length; i++) {
+              const file = files[i];
+              console.log(`[复制功能] 📄 文件${i+1}:`, {
+                name: file.name,
+                size: file.size,
+                type: file.type,
+                lastModified: file.lastModified
+              });
+              
+              // 缓存文件
+              window.__fileDebugCache.set(file.name, file);
+              console.log('[复制功能] ✅ 已缓存文件:', file.name);
+            }
+          }
+        }, true);
+        
+        // ========== 调试：打印DOM结构 ==========
+        function logDOMStructure() {
+          console.group('[调试工具] 🔍 当前页面DOM结构');
+          
+          // 查找可能的文件列表容器
+          const candidates = [
+            document.querySelector('[class*="upload"]'),
+            document.querySelector('[class*="file"]'),
+            document.querySelector('[class*="list"]'),
+            document.querySelector('[class*="item"]'),
+            document.querySelector('main'),
+            document.querySelector('[role="main"]')
+          ];
+          
+          candidates.forEach((elem, index) => {
+            if (elem) {
+              console.log(`候选容器${index + 1}:`, {
+                element: elem,
+                className: elem.className,
+                innerHTML: elem.innerHTML.substring(0, 200)
+              });
+            }
+          });
+          
+          console.groupEnd();
+        }
+        
+        // ========== 添加复制按钮（只为原始文件添加，严格限定在文件列表中）==========
+        function addCopyButtons() {
+          console.log('[复制功能] 🔍 开始添加复制按钮...');
+          
+          // 检查缓存
+          if (window.__fileDebugCache.size === 0) {
+            console.log('[复制功能] ⚠️ 没有缓存的文件');
+            return;
+          }
+          
+          console.log('[复制功能] 📦 缓存文件:', Array.from(window.__fileDebugCache.keys()));
+          
+          // 查找所有包含 .pdf 的按钮容器（最精确的查找）
+          const allElements = document.body.querySelectorAll('*');
+          const processedFiles = new Set();
+          
+          allElements.forEach(elem => {
+            const text = elem.textContent || '';
+            
+            // 必须包含 .pdf
+            if (!text.toLowerCase().includes('.pdf')) {
+              return;
+            }
+            
+            // 提取文件名
+            const fileNameMatch = text.match(/([^\s\/\\]+\.pdf)/i);
+            if (!fileNameMatch) {
+              return;
+            }
+            
+            const fileName = fileNameMatch[1];
+            
+            // 每个文件只处理一次
+            if (processedFiles.has(fileName)) {
+              return;
+            }
+            
+            // 如果是复制的文件，不添加复制按钮
+            if (fileName.includes('_副本')) {
+              console.log(`[调试工具] ⏭️ 跳过副本文件: ${fileName}`);
+              return;
+            }
+            
+            // 必须在缓存中
+            if (!window.__fileDebugCache.has(fileName)) {
+              return;
+            }
+            
+            // 必须包含按钮（说明是操作区域）
+            const buttons = elem.querySelectorAll('button');
+            if (buttons.length === 0) {
+              return;
+            }
+            
+            // ===== 过滤设置区域：通过文本长度判断 =====
+            // 设置区域的文本通常很长（包含多个选项）
+            // 文件列表项的文本相对较短
+            if (text.length > 500) {
+              console.log(`[调试工具] ⏭️ 跳过长文本区域（可能是设置面板）`);
+              return;
+            }
+            
+            // 如果文本包含"清单位置"且同时包含多个单选按钮，跳过
+            const hasRadioGroup = text.includes('清单放最后') || text.includes('原地输出') || text.includes('抽丢清单');
+            if (hasRadioGroup) {
+              console.log(`[调试工具] ⏭️ 跳过设置区域（包含单选组）`);
+              return;
+            }
+            
+            // 避免重复添加
+            if (elem.querySelector('.my-copy-btn')) {
+              return;
+            }
+            
+            console.log(`[调试工具] ✅ 找到原始文件: ${fileName}`);
+            console.log(`[调试工具] 📊 元素信息:`, {
+              文本长度: text.length,
+              按钮数量: buttons.length,
+              文本预览: text.substring(0, 100)
+            });
+            
+            // 查找勾选按钮（绿色勾号）或删除按钮
+            let checkButton = null;
+            let targetButton = null;
+            
+            buttons.forEach((btn, idx) => {
+              const btnText = btn.textContent?.trim() || '';
+              const btnClass = btn.className || '';
+              const btnHTML = btn.innerHTML || '';
+              
+              console.log(`  按钮${idx + 1}: text="${btnText}" class="${btnClass.substring(0, 30)}"`);
+              
+              // 查找勾选按钮的特征
+              if (btnClass.includes('success') || 
+                  btnClass.includes('check') || 
+                  btnHTML.includes('✓') ||
+                  btnHTML.includes('check') ||
+                  btn.querySelector('[class*="check"]') ||
+                  btn.querySelector('[class*="success"]')) {
+                checkButton = btn;
+                targetButton = btn;
+                console.log(`    → 这是勾选按钮`);
+              }
+              
+              // 查找删除按钮
+              if (btnHTML.includes('×') || btnHTML.includes('close') || btnText === 'X' || btnText === '×') {
+                if (!targetButton) {
+                  targetButton = btn;
+                }
+                console.log(`    → 这是删除按钮`);
+              }
+            });
+            
+            // 创建复制按钮
+            const copyBtn = document.createElement('button');
+            copyBtn.className = 'my-copy-btn';
+            copyBtn.textContent = '复制';
+            copyBtn.title = `复制 ${fileName}`;
+            
+            // 蓝色背景 + 白色文字
+            copyBtn.style.cssText = `
+              display: inline-flex !important;
+              align-items: center !important;
+              justify-content: center !important;
+              padding: 4px 12px !important;
+              margin: 0 4px !important;
+              background: #2563eb !important;
+              color: white !important;
+              border: none !important;
+              border-radius: 6px !important;
+              cursor: pointer !important;
+              font-size: 13px !important;
+              font-weight: 500 !important;
+              white-space: nowrap !important;
+              transition: background 0.2s !important;
+            `;
+            
+            // 悬停效果
+            copyBtn.addEventListener('mouseenter', () => {
+              copyBtn.style.background = '#1d4ed8 !important';
+            });
+            copyBtn.addEventListener('mouseleave', () => {
+              copyBtn.style.background = '#2563eb !important';
+            });
+            
+            // 点击事件
+            copyBtn.addEventListener('click', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              console.log('[复制功能] 🖱️ 点击复制按钮:', fileName);
+              copyFile(fileName);
+            });
+            
+            // 插入位置：目标按钮之前
+            if (targetButton) {
+              try {
+                targetButton.parentElement.insertBefore(copyBtn, targetButton);
+                console.log('[复制功能] ✅ 已插入到目标按钮之前');
+                processedFiles.add(fileName);
+              } catch (e) {
+                console.log('[复制功能] ❌ 插入失败:', e.message);
+                // 备用：插入到第一个按钮后面
+                try {
+                  buttons[0].parentElement.insertBefore(copyBtn, buttons[0].nextSibling);
+                  console.log('[复制功能] ✅ 已插入到第一个按钮后面（备用方案）');
+                  processedFiles.add(fileName);
+                } catch (e2) {
+                  console.log('[复制功能] ❌ 备用方案也失败:', e2.message);
+                }
+              }
+            } else {
+              // 如果都找不到，尝试插入到最后一个按钮前面
+              try {
+                const lastBtn = buttons[buttons.length - 1];
+                lastBtn.parentElement.insertBefore(copyBtn, lastBtn);
+                console.log('[复制功能] ✅ 已插入到最后一个按钮前面（保底方案）');
+                processedFiles.add(fileName);
+              } catch (e) {
+                console.log('[复制功能] ❌ 所有方案都失败:', e.message);
+              }
+            }
+          });
+          
+          console.log(`[调试工具] 🎉 添加完成，共为 ${processedFiles.size} 个原始文件添加复制按钮`);
+        }
+        
+        // ========== 复制文件（修改内容改变MD5）==========
+        async function copyFile(fileName) {
+          console.log('[复制功能] 📋 开始复制文件:', fileName);
+          console.log('[复制功能] 📦 当前缓存:', Array.from(window.__fileDebugCache.keys()));
+          
+          const file = window.__fileDebugCache.get(fileName);
+          
+          if (!file) {
+            console.error('[复制功能] ❌ 未找到文件数据:', fileName);
+            alert(`❌ 无法复制文件: ${fileName}\n文件未在缓存中，请刷新页面后重新上传`);
+            return;
+          }
+          
+          copyCounter++;
+          const newFileName = fileName.replace('.pdf', `_副本${copyCounter}.pdf`);
+          
+          try {
+            console.log('[复制功能] 🔄 读取文件内容...');
+            
+            // 读取原文件内容
+            const arrayBuffer = await file.arrayBuffer();
+            const originalBytes = new Uint8Array(arrayBuffer);
+            
+            console.log('[复制功能] 📄 原文件大小:', originalBytes.length, '字节');
+            
+            // 创建随机标识（改变MD5）
+            const timestamp = Date.now();
+            const randomId = Math.random().toString(36).substring(2, 15);
+            const comment = `\n%%PDF-COPY-${timestamp}-${randomId}-END%%\n`;
+            const commentBytes = new TextEncoder().encode(comment);
+            
+            // 合并原始文件和注释
+            const newBytes = new Uint8Array(originalBytes.length + commentBytes.length);
+            newBytes.set(originalBytes, 0);
+            newBytes.set(commentBytes, originalBytes.length);
+            
+            console.log('[复制功能] ✅ 新文件大小:', newBytes.length, '字节 (+', commentBytes.length, ')');
+            console.log('[复制功能] 🔐 添加的标识:', comment.trim());
+            
+            // 创建新文件
+            const copiedFile = new File([newBytes], newFileName, {
+              type: file.type,
+              lastModified: Date.now()
+            });
+            
+            console.log('[复制功能] 🎉 创建文件副本:', newFileName);
+            
+            // 查找文件输入框
+            const fileInput = document.querySelector('input[type="file"]');
+            if (!fileInput) {
+              console.error('[复制功能] ❌ 未找到文件输入框');
+              alert('❌ 未找到文件输入框');
+              return;
+            }
+            
+            // 创建 DataTransfer
+            const dataTransfer = new DataTransfer();
+            dataTransfer.items.add(copiedFile);
+            
+            // 设置文件
+            fileInput.files = dataTransfer.files;
+            
+            // 触发 change 事件
+            const event = new Event('change', { bubbles: true });
+            fileInput.dispatchEvent(event);
+            
+            console.log('[复制功能] ✅ 已触发文件上传');
+            console.log('[复制功能] 📊 文件信息:', {
+              原文件: fileName,
+              副本: newFileName,
+              原大小: originalBytes.length,
+              新大小: newBytes.length,
+              增加: commentBytes.length
+            });
+            
+            // 不使用alert，改用更友好的提示
+            const notification = document.createElement('div');
+            notification.textContent = `✅ 已复制: ${fileName}`;
+            notification.style.cssText = `
+              position: fixed;
+              top: 20px;
+              right: 20px;
+              padding: 12px 20px;
+              background: #10b981;
+              color: white;
+              border-radius: 8px;
+              box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+              z-index: 99999;
+              font-size: 14px;
+              animation: slideIn 0.3s;
+            `;
+            document.body.appendChild(notification);
+            setTimeout(() => notification.remove(), 3000);
+            
+          } catch (e) {
+            console.error('[复制功能] ❌ 复制失败:', e);
+            alert(`❌ 复制失败: ${e.message}`);
+          }
+        }
+        
+        // ========== 添加动画样式 ==========
+        const style = document.createElement('style');
+        style.textContent = `
+          @keyframes slideIn {
+            from {
+              transform: translateX(400px);
+              opacity: 0;
+            }
+            to {
+              transform: translateX(0);
+              opacity: 1;
+            }
+          }
+        `;
+        document.head.appendChild(style);
+        
+        // ========== 初始化 ==========
+        setTimeout(() => {
+          logDOMStructure();
+          addCopyButtons();
+        }, 2000);
+        
+        // 定期检查并添加按钮
+        setInterval(addCopyButtons, 2000);
+        
+        // 监听 DOM 变化
+        const observer = new MutationObserver(() => {
+          setTimeout(addCopyButtons, 500);
+        });
+        
+        observer.observe(document.body, {
+          childList: true,
+          subtree: true
+        });
+        
+        console.log('[复制功能] 🎉 初始化完成！');
+        console.log('[复制功能] 💡 请上传文件，然后查看控制台输出');
+        console.log('[复制功能] 🔐 现在会修改文件内容以改变MD5值');
+        
+        // ========== 添加打印功能增强 ==========
+        console.log('[打印增强] 🖨️ 初始化打印功能增强...');
+        
+        // 监听所有按钮点击
+        document.addEventListener('click', function(e) {
+          const target = e.target;
+          const button = target.closest('button');
+          
+          if (!button) return;
+          
+          const text = button.textContent || button.innerText || '';
+          
+          // 检测打印相关按钮
+          if (text.includes('打印') || text.includes('Print') || 
+              text.includes('下载') || text.includes('Download') ||
+              text.includes('合并')) {
+            
+            console.log('[打印增强] 🖱️ 检测到操作按钮点击:', text);
+            
+            // 显示处理中提示
+            showProcessingNotification(text);
+            
+            // 如果是打印按钮，添加额外处理
+            if (text.includes('打印') || text.includes('Print')) {
+              setTimeout(() => {
+                tryTriggerPrint();
+              }, 1000);
+            }
+          }
+        }, true);
+        
+        // 显示处理中通知
+        function showProcessingNotification(action) {
+          const notification = document.createElement('div');
+          notification.id = 'processing-notification';
+          notification.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <div class="spinner"></div>
+              <span>正在${action}...</span>
+            </div>
+          `;
+          notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 16px 24px;
+            background: white;
+            color: #1f2937;
+            border: 2px solid #3b82f6;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 99999;
+            font-size: 15px;
+            font-weight: 500;
+            animation: slideIn 0.3s;
+          `;
+          
+          // 添加旋转动画样式
+          if (!document.getElementById('spinner-style')) {
+            const spinnerStyle = document.createElement('style');
+            spinnerStyle.id = 'spinner-style';
+            spinnerStyle.textContent = `
+              .spinner {
+                width: 20px;
+                height: 20px;
+                border: 3px solid #e5e7eb;
+                border-top-color: #3b82f6;
+                border-radius: 50%;
+                animation: spin 0.8s linear infinite;
+              }
+              @keyframes spin {
+                to { transform: rotate(360deg); }
+              }
+            `;
+            document.head.appendChild(spinnerStyle);
+          }
+          
+          // 移除旧通知
+          const oldNotification = document.getElementById('processing-notification');
+          if (oldNotification) {
+            oldNotification.remove();
+          }
+          
+          document.body.appendChild(notification);
+          
+          console.log('[打印增强] 📢 显示处理通知:', action);
+          
+          // 5秒后自动移除
+          setTimeout(() => {
+            if (notification.parentElement) {
+              notification.style.animation = 'slideOut 0.3s';
+              setTimeout(() => notification.remove(), 300);
+            }
+          }, 5000);
+        }
+        
+        // 尝试触发打印
+        function tryTriggerPrint() {
+          console.log('[打印增强] 🔍 查找PDF预览...');
+          
+          // 方法1: 查找iframe中的PDF
+          const iframes = document.querySelectorAll('iframe');
+          iframes.forEach((iframe, index) => {
+            try {
+              const src = iframe.src || '';
+              if (src.includes('blob:') || src.includes('.pdf')) {
+                console.log(`[打印增强] 📄 找到PDF iframe ${index + 1}:`, src.substring(0, 50));
+                
+                // 尝试触发打印
+                setTimeout(() => {
+                  try {
+                    iframe.contentWindow.print();
+                    console.log('[打印增强] ✅ 已触发iframe打印');
+                    showSuccessNotification('✅ 已打开打印对话框');
+                  } catch (e) {
+                    console.log('[打印增强] ⚠️ iframe打印失败:', e.message);
+                  }
+                }, 500);
+              }
+            } catch (e) {
+              console.log(`[打印增强] ⚠️ 检查iframe ${index + 1}失败:`, e.message);
+            }
+          });
+          
+          // 方法2: 查找embed元素
+          const embeds = document.querySelectorAll('embed[type="application/pdf"]');
+          if (embeds.length > 0) {
+            console.log('[打印增强] 📄 找到PDF embed元素:', embeds.length, '个');
+          }
+          
+          // 方法3: 查找object元素
+          const objects = document.querySelectorAll('object[type="application/pdf"]');
+          if (objects.length > 0) {
+            console.log('[打印增强] 📄 找到PDF object元素:', objects.length, '个');
+          }
+          
+          // 方法4: 检查是否有下载链接
+          const links = document.querySelectorAll('a[href*="blob:"], a[href*=".pdf"]');
+          if (links.length > 0) {
+            console.log('[打印增强] 🔗 找到PDF下载链接:', links.length, '个');
+            links.forEach((link, index) => {
+              console.log(`  链接${index + 1}:`, link.href.substring(0, 50));
+            });
+          }
+        }
+        
+        // 显示成功通知
+        function showSuccessNotification(message) {
+          const oldNotification = document.getElementById('processing-notification');
+          if (oldNotification) {
+            oldNotification.remove();
+          }
+          
+          const notification = document.createElement('div');
+          notification.textContent = message;
+          notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 16px 24px;
+            background: #10b981;
+            color: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 99999;
+            font-size: 15px;
+            font-weight: 500;
+            animation: slideIn 0.3s;
+          `;
+          document.body.appendChild(notification);
+          
+          setTimeout(() => {
+            notification.style.animation = 'slideOut 0.3s';
+            setTimeout(() => notification.remove(), 300);
+          }, 3000);
+        }
+        
+        // 监听PDF加载完成
+        window.addEventListener('load', () => {
+          console.log('[打印增强] 📄 页面加载完成，检查PDF元素...');
+          
+          setTimeout(() => {
+            const iframes = document.querySelectorAll('iframe');
+            const embeds = document.querySelectorAll('embed');
+            const objects = document.querySelectorAll('object');
+            
+            console.log('[打印增强] 📊 当前页面元素统计:');
+            console.log('  - iframe:', iframes.length, '个');
+            console.log('  - embed:', embeds.length, '个');
+            console.log('  - object:', objects.length, '个');
+          }, 2000);
+        });
+        
+        // 添加slideOut动画
+        const styleSheet = document.querySelector('style');
+        if (styleSheet && !styleSheet.textContent.includes('slideOut')) {
+          styleSheet.textContent += `
+            @keyframes slideOut {
+              from {
+                transform: translateX(0);
+                opacity: 1;
+              }
+              to {
+                transform: translateX(400px);
+                opacity: 0;
+              }
+            }
+          `;
+        }
+        
+        console.log('[打印增强] ✅ 打印功能增强已启用');
+        
+      })();
+    </script>
+    <link
+      rel="preload"
+      href="static/font/569ce4b8f30dc480-s.p.woff2"
+      as="font"
+      crossorigin=""
+      type="font/woff2"
+    />
+    <link
+      rel="preload"
+      href="static/font/93f479601ee12b01-s.p.woff2"
+      as="font"
+      crossorigin=""
+      type="font/woff2"
+    />
+    <link
+      rel="stylesheet"
+      href="static/css/99cf83cb2d1b01ec.css"
+      crossorigin="anonymous"
+      data-precedence="next"
+    />
+    <link
+      rel="stylesheet"
+      href="static/css/dce7a9443e3db38d.css"
+      crossorigin="anonymous"
+      data-precedence="next"
+    />
+    <link
+      rel="stylesheet"
+      href="static/css/b7cb32cf4a7bfafb.css"
+      crossorigin="anonymous"
+      data-precedence="next"
+    />
+    <link
+      rel="preload"
+      as="script"
+      fetchpriority="low"
+      href="static/js/webpack-57c01fedb6eeb9b7.js"
+      crossorigin=""
+    />
+    <script
+      src="static/js/4bd1b696-4b73a7a7ee64eb5a.js"
+      async=""
+      crossorigin=""
+    ></script>
+    <script
+      src="static/js/684-3ede56ca0f7c9112.js"
+      async=""
+      crossorigin=""
+    ></script>
+    <script
+      src="static/js/main-app-bd308f3bf04d0fb0.js"
+      async=""
+      crossorigin=""
+    ></script>
+    <script
+      src="static/js/9e2a4553-1051cddca6dad9d2.js"
+      async=""
+      crossorigin=""
+    ></script>
+    <script
+      src="static/js/9b0008ae-271aa26b9a487cb1.js"
+      async=""
+      crossorigin=""
+    ></script>
+    <script
+      src="static/js/69-b5c145e548446ae2.js"
+      async=""
+      crossorigin=""
+    ></script>
+    <script
+      src="static/js/715-a79d9f7d55842c15.js"
+      async=""
+      crossorigin=""
+    ></script>
+    <script
+      src="static/js/53-e710f283f052665c.js"
+      async=""
+      crossorigin=""
+    ></script>
+    <script
+      src="static/js/822-15d7cef10fdae15f.js"
+      async=""
+      crossorigin=""
+    ></script>
+    <script
+      src="static/js/945-3d3b1445bc289805.js"
+      async=""
+      crossorigin=""
+    ></script>
+    <script
+      src="static/js/788-dbcaeaad83012140.js"
+      async=""
+      crossorigin=""
+    ></script>
+    <script
+      src="static/js/536-f4e623b870e76498.js"
+      async=""
+      crossorigin=""
+    ></script>
+    <script
+      src="static/js/page-3f67d3909d5cd6ef.js"
+      async=""
+      crossorigin=""
+    ></script>
+    <script
+      src="static/js/49-add9fdb10e8e322d.js"
+      async=""
+      crossorigin=""
+    ></script>
+    <script
+      src="static/js/layout-28493c0e31344be9.js"
+      async=""
+      crossorigin=""
+    ></script>
+    <script
+      src="static/js/not-found-b4d5784393f6b675.js"
+      async=""
+      crossorigin=""
+    ></script>
+    <meta name="next-size-adjust" content="" />
+    <title>发票打印助手</title>
+    <meta
+      name="description"
+      content="专业的电子发票处理解决方案，支持批量合并、自动统计、一键打印。让报销更简单，让财务更轻松。免费在线使用。"
+    />
+    <meta name="author" content="发票打印助手" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta
+      name="keywords"
+      content="电子发票,发票合并,发票处理,PDF合并,批量处理,财务工具,报销工具,发票统计,发票打印"
+    />
+    <meta name="creator" content="发票打印助手" />
+    <meta name="publisher" content="发票打印助手" />
+    <meta name="robots" content="index, follow" />
+    <meta name="apple-mobile-web-app-title" content="发票打印助手" />
+    <meta property="og:title" content="发票打印助手 - 让报销更简单，让财务更轻松" />
+    <meta
+      property="og:description"
+      content="专业的电子发票处理解决方案，支持批量合并、自动统计、一键打印"
+    />
+    <meta property="og:locale" content="zh_CN" />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="发票打印助手" />
+    <meta
+      name="twitter:description"
+      content="专业的电子发票处理解决方案，让报销更简单，让财务更轻松"
+    />
+    <link rel="icon" href="/favicon.ico" type="image/x-icon" sizes="48x48" />
+    <link
+      rel="icon"
+      href="/icon0.svg?eb1262b39108723a"
+      type="image/svg+xml"
+      sizes="any"
+    />
+    <link
+      rel="icon"
+      href="/icon1.png?873064b22fb970bd"
+      type="image/png"
+      sizes="96x96"
+    />
+    <link
+      rel="apple-touch-icon"
+      href="/apple-icon.png?477d8be8c2b1658d"
+      type="image/png"
+      sizes="180x180"
+    />
+    <script>
+      document
+        .querySelectorAll(
+          'body link[rel="icon"], body link[rel="apple-touch-icon"]',
+        )
+        .forEach((el) => document.head.appendChild(el));
+    </script>
+    <script
+      src="static/js/polyfills-42372ed130431b0a.js"
+      crossorigin="anonymous"
+      nomodule=""
+    ></script>
+    <!-- 站酷酷黑体字体预加载 - 最早加载 -->
+    <link rel="preload" href="https://cdn.jsdelivr.net/gh/Fonthub/ZCOOLKuHei@latest/ZCOOLKuHei-Regular.woff2" as="font" type="font/woff2" crossorigin>
+    
+    <!-- 站酷酷黑体字体和渐变动画样式 - 内联关键CSS -->
+    <style id="logo-title-styles">
+      /* 站酷酷黑体 - 免费商用 */
+      @font-face {
+        font-family: 'ZCOOL KuHei';
+        font-style: normal;
+        font-weight: 400;
+        src: url('https://cdn.jsdelivr.net/gh/Fonthub/ZCOOLKuHei@latest/ZCOOLKuHei-Regular.woff2') format('woff2');
+        font-display: swap;
+      }
+
+      /* 彩虹流动动画 */
+      @keyframes rainbow-flow {
+        0%, 100% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+      }
+
+      /* ========== 增强版背景效果（来自 index.html）========== */
+      /* 动态渐变背景层 */
+      body::before {
+        content: '';
+        position: fixed;
+        top: -50%;
+        left: -50%;
+        width: 200%;
+        height: 200%;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+        background-size: 200% 200%;
+        animation: gradient-bg 15s ease infinite;
+        opacity: 0.15;
+        filter: blur(60px);
+        pointer-events: none;
+        z-index: 0;
+      }
+
+      /* 网格背景 */
+      body::after {
+        content: '';
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-image: 
+          linear-gradient(rgba(102, 126, 234, 0.08) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(102, 126, 234, 0.08) 1px, transparent 1px);
+        background-size: 50px 50px;
+        opacity: 0.5;
+        pointer-events: none;
+        z-index: 0;
+      }
+
+      /* 确保所有内容在背景之上 */
+      body > * {
+        position: relative;
+        z-index: 1;
+      }
+
+      /* 渐变动画 */
+      @keyframes gradient-bg {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+      }
+
+      /* 浮动动画 */
+      @keyframes float {
+        0%, 100% { transform: translateY(0px); }
+        50% { transform: translateY(-20px); }
+      }
+
+      /* 粒子动画 */
+      @keyframes particle {
+        0%, 100% {
+          transform: translateY(0) translateX(0);
+          opacity: 0;
+        }
+        10% { opacity: 1; }
+        90% { opacity: 1; }
+        100% {
+          transform: translateY(-100vh) translateX(50px);
+          opacity: 0;
+        }
+      }
+
+      /* 扫描线动画 */
+      @keyframes scan {
+        0% { transform: translateY(-100%); }
+        100% { transform: translateY(100vh); }
+      }
+
+      /* 粒子样式 */
+      .particle {
+        position: fixed;
+        width: 2px;
+        height: 2px;
+        background: rgba(102, 126, 234, 0.6);
+        border-radius: 50%;
+        pointer-events: none;
+        z-index: 0;
+        animation: particle 15s linear infinite;
+      }
+
+      /* 扫描线样式 */
+      .scan-line {
+        position: fixed;
+        width: 100%;
+        height: 2px;
+        background: linear-gradient(90deg, transparent, rgba(102, 126, 234, 0.6), transparent);
+        box-shadow: 0 0 20px rgba(102, 126, 234, 0.6);
+        animation: scan 4s linear infinite;
+        pointer-events: none;
+        z-index: 0;
+      }
+
+      /* 浮动形状 */
+      .floating-shape {
+        position: fixed;
+        border-radius: 50%;
+        pointer-events: none;
+        z-index: 0;
+        animation: float 8s ease-in-out infinite;
+        filter: blur(40px);
+      }
+
+      /* ========== 覆盖主容器背景，应用炫酷效果 ========== */
+      /* 目标：<div class="min-h-screen bg-blue-50 bg-gradient-to-br from-blue-50 to-indigo-100 ..."> */
+      .min-h-screen.bg-blue-50.bg-gradient-to-br {
+        background: linear-gradient(135deg, #f0f4ff 0%, #fce7f3 30%, #e0f2fe 60%, #f3e8ff 100%) !important;
+        position: relative !important;
+        overflow: visible !important;
+      }
+
+      /* 动态渐变背景层 - 彩虹色渐变 */
+      .min-h-screen.bg-blue-50.bg-gradient-to-br::before {
+        content: '' !important;
+        position: fixed !important;
+        top: -50% !important;
+        left: -50% !important;
+        width: 200% !important;
+        height: 200% !important;
+        background: linear-gradient(135deg, 
+          #667eea 0%, 
+          #764ba2 15%, 
+          #f093fb 30%, 
+          #4facfe 45%, 
+          #00f2fe 60%, 
+          #43e97b 75%, 
+          #fa709a 90%, 
+          #667eea 100%) !important;
+        background-size: 400% 400% !important;
+        animation: gradient-bg 20s ease infinite !important;
+        opacity: 0.4 !important;
+        filter: blur(80px) !important;
+        pointer-events: none !important;
+        z-index: -2 !important;
+      }
+
+      /* 网格背景 - 淡化（参考index.html的设定）*/
+      .min-h-screen.bg-blue-50.bg-gradient-to-br::after {
+        content: '' !important;
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        background-image: 
+          linear-gradient(rgba(102, 126, 234, 0.05) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(102, 126, 234, 0.05) 1px, transparent 1px) !important;
+        background-size: 50px 50px !important;
+        opacity: 0.3 !important;
+        pointer-events: none !important;
+        z-index: -1 !important;
+      }
+
+      /* 确保主容器的子元素在背景之上 */
+      .min-h-screen.bg-blue-50.bg-gradient-to-br > * {
+        position: relative !important;
+        z-index: 1 !important;
+      }
+
+      /* ========== 返回首页按钮样式 ========== */
+      .home-btn-text,
+      span.home-btn-text {
+        font-family: 'ZCOOL KuHei', 'Microsoft YaHei', 'PingFang SC', sans-serif !important;
+        font-size: 0.95rem !important;
+        font-weight: 500 !important;
+        letter-spacing: 0.08em !important;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 25%, #f093fb 50%, #4facfe 75%, #00f2fe 100%) !important;
+        background-size: 200% 200% !important;
+        -webkit-background-clip: text !important;
+        -webkit-text-fill-color: transparent !important;
+        background-clip: text !important;
+        animation: rainbow-flow 4s ease infinite !important;
+        text-rendering: optimizeLegibility !important;
+        -webkit-font-smoothing: antialiased !important;
+        -moz-osx-font-smoothing: grayscale !important;
+      }
+
+      /* 通配符选择器 - 捕获所有可能的标题元素 */
+      header span.font-bold.text-xl,
+      header .font-bold.text-xl,
+      header a span.font-bold,
+      header a span.text-xl,
+      [role="banner"] span.font-bold.text-xl,
+      [role="banner"] .font-bold.text-xl,
+      .logo-title,
+      header .logo-title,
+      [role="banner"] .logo-title {
+        font-family: 'ZCOOL KuHei', 'Microsoft YaHei', 'PingFang SC', -apple-system, BlinkMacSystemFont, sans-serif !important;
+        font-size: 1.5rem !important;
+        font-weight: 400 !important;
+        letter-spacing: 0.12em !important;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 25%, #f093fb 50%, #4facfe 75%, #00f2fe 100%) !important;
+        background-size: 200% 200% !important;
+        -webkit-background-clip: text !important;
+        -webkit-text-fill-color: transparent !important;
+        background-clip: text !important;
+        animation: rainbow-flow 4s ease infinite !important;
+        text-rendering: optimizeLegibility !important;
+        -webkit-font-smoothing: antialiased !important;
+        -moz-osx-font-smoothing: grayscale !important;
+        position: relative !important;
+        display: inline-block !important;
+        padding: 0.5rem 1rem !important;
+        border-radius: 12px !important;
+        transition: all 0.3s ease !important;
+        color: transparent !important;
+      }
+
+      /* 悬停发光效果 */
+      header span.font-bold.text-xl:hover,
+      header .font-bold.text-xl:hover,
+      [role="banner"] span.font-bold.text-xl:hover,
+      .logo-title:hover,
+      header .logo-title:hover,
+      [role="banner"] .logo-title:hover {
+        transform: translateY(-1px) !important;
+        filter: brightness(1.2) !important;
+      }
+
+      /* 背景模糊玻璃效果 */
+      header span.font-bold.text-xl::before,
+      header .font-bold.text-xl::before,
+      [role="banner"] span.font-bold.text-xl::before,
+      .logo-title::before,
+      header .logo-title::before,
+      [role="banner"] .logo-title::before {
+        content: '' !important;
+        position: absolute !important;
+        inset: 0 !important;
+        border-radius: 12px !important;
+        background: rgba(102, 126, 234, 0.05) !important;
+        backdrop-filter: blur(10px) !important;
+        border: 1px solid rgba(102, 126, 234, 0.2) !important;
+        z-index: -1 !important;
+        opacity: 0 !important;
+        transition: opacity 0.3s ease !important;
+      }
+
+      header span.font-bold.text-xl:hover::before,
+      header .font-bold.text-xl:hover::before,
+      [role="banner"] span.font-bold.text-xl:hover::before,
+      .logo-title:hover::before,
+      header .logo-title:hover::before,
+      [role="banner"] .logo-title:hover::before {
+        opacity: 1 !important;
+      }
+
+      /* ========== 卡片标题样式（添加发票文件、上传的文件、发票统计等） ========== */
+      [data-slot="card-title"].leading-none.font-semibold,
+      div[data-slot="card-title"] {
+        font-family: 'ZCOOL KuHei', 'Microsoft YaHei', 'PingFang SC', sans-serif !important;
+        font-size: 1.1rem !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.08em !important;
+      }
+
+      /* 只对文本节点应用渐变，保留正常文本颜色作为后备 */
+      [data-slot="card-title"] {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 25%, #f093fb 50%, #4facfe 75%, #00f2fe 100%) !important;
+        background-size: 200% 200% !important;
+        -webkit-background-clip: text !important;
+        -webkit-text-fill-color: transparent !important;
+        background-clip: text !important;
+        animation: rainbow-flow 4s ease infinite !important;
+        text-rendering: optimizeLegibility !important;
+        -webkit-font-smoothing: antialiased !important;
+        -moz-osx-font-smoothing: grayscale !important;
+        /* 后备颜色，防止不支持的浏览器显示空白 */
+        color: #1f2937 !important;
+      }
+
+      /* 确保 SVG 图标正常显示 - 完全重置背景相关属性 */
+      [data-slot="card-title"] svg {
+        -webkit-text-fill-color: #6366f1 !important;
+        color: #6366f1 !important;
+        fill: none !important;
+        stroke: currentColor !important;
+        background: transparent !important;
+        -webkit-background-clip: border-box !important;
+        background-clip: border-box !important;
+        animation: none !important;
+      }
+
+      /* 确保图标元素的路径可见 */
+      [data-slot="card-title"] svg path,
+      [data-slot="card-title"] svg rect,
+      [data-slot="card-title"] svg circle {
+        stroke: #6366f1 !important;
+      }
+
+      /* 确保非 SVG 的子元素也显示正常 */
+      [data-slot="card-title"] > *:not(svg) {
+        background: inherit !important;
+        -webkit-background-clip: inherit !important;
+        background-clip: inherit !important;
+        -webkit-text-fill-color: inherit !important;
+      }
+
+      /* 确保 span、button 等元素也应用样式 */
+      [data-slot="card-title"] span:not([class*="sr-only"]),
+      [data-slot="card-title"] button {
+        background: inherit !important;
+        -webkit-background-clip: inherit !important;
+        background-clip: inherit !important;
+        -webkit-text-fill-color: inherit !important;
+      }
+
+      /* ========== PDF预览控制按钮样式（放大、缩小、适应、下载、打印） ========== */
+      /* 针对卡片标题内的所有按钮和span */
+      [data-slot="card-title"] button span,
+      [data-slot="card-title"] button,
+      [data-slot="card-header"] button span,
+      [data-slot="card-header"] button {
+        font-family: 'ZCOOL KuHei', 'Microsoft YaHei', 'PingFang SC', sans-serif !important;
+        letter-spacing: 0.06em !important;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 25%, #f093fb 50%, #4facfe 75%, #00f2fe 100%) !important;
+        background-size: 200% 200% !important;
+        -webkit-background-clip: text !important;
+        -webkit-text-fill-color: transparent !important;
+        background-clip: text !important;
+        animation: rainbow-flow 4s ease infinite !important;
+        text-rendering: optimizeLegibility !important;
+        -webkit-font-smoothing: antialiased !important;
+        color: transparent !important;
+      }
+
+      /* 控制区域的所有文字（包括百分比显示） */
+      [data-slot="card-title"] .text-xs,
+      [data-slot="card-title"] .text-sm,
+      [data-slot="card-title"] span.text-xs,
+      [data-slot="card-title"] span.text-sm {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 25%, #f093fb 50%, #4facfe 75%, #00f2fe 100%) !important;
+        background-size: 200% 200% !important;
+        -webkit-background-clip: text !important;
+        -webkit-text-fill-color: transparent !important;
+        background-clip: text !important;
+        animation: rainbow-flow 4s ease infinite !important;
+        color: transparent !important;
+      }
+
+      /* 确保按钮图标正常显示 */
+      [data-slot="card-title"] button svg,
+      [data-slot="card-header"] button svg {
+        -webkit-text-fill-color: #6366f1 !important;
+        color: #6366f1 !important;
+        background: transparent !important;
+        -webkit-background-clip: border-box !important;
+        background-clip: border-box !important;
+        animation: none !important;
+      }
+
+      /* ========== 5项功能标题样式 ========== */
+      article h3.text-lg.font-semibold.text-gray-800,
+      article .text-lg.font-semibold.text-gray-800 {
+        font-family: 'ZCOOL KuHei', 'Microsoft YaHei', 'PingFang SC', sans-serif !important;
+        font-size: 1.25rem !important;
+        font-weight: 500 !important;
+        letter-spacing: 0.08em !important;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 25%, #f093fb 50%, #4facfe 75%, #00f2fe 100%) !important;
+        background-size: 200% 200% !important;
+        -webkit-background-clip: text !important;
+        -webkit-text-fill-color: transparent !important;
+        background-clip: text !important;
+        animation: rainbow-flow 4s ease infinite !important;
+        text-rendering: optimizeLegibility !important;
+        -webkit-font-smoothing: antialiased !important;
+        -moz-osx-font-smoothing: grayscale !important;
+        position: relative !important;
+        display: inline-block !important;
+        padding: 0.25rem 0.5rem !important;
+        border-radius: 8px !important;
+        transition: all 0.3s ease !important;
+        color: transparent !important;
+      }
+
+      /* 功能标题悬停效果 */
+      article h3.text-lg.font-semibold.text-gray-800:hover,
+      article .text-lg.font-semibold.text-gray-800:hover {
+        transform: translateY(-2px) scale(1.05) !important;
+        filter: brightness(1.2) !important;
+      }
+
+      /* 功能标题背景效果 */
+      article h3.text-lg.font-semibold.text-gray-800::before,
+      article .text-lg.font-semibold.text-gray-800::before {
+        content: '' !important;
+        position: absolute !important;
+        inset: 0 !important;
+        border-radius: 8px !important;
+        background: rgba(102, 126, 234, 0.08) !important;
+        backdrop-filter: blur(10px) !important;
+        border: 1px solid rgba(102, 126, 234, 0.25) !important;
+        z-index: -1 !important;
+        opacity: 0 !important;
+        transition: opacity 0.3s ease !important;
+      }
+
+      article h3.text-lg.font-semibold.text-gray-800:hover::before,
+      article .text-lg.font-semibold.text-gray-800:hover::before {
+        opacity: 1 !important;
+      }
+
+      /* ========== 联系/反馈按钮样式（简洁版 - 参考 index.html）========== */
+      /* 联系容器 */
+      .feedback-container {
+        position: fixed;
+        bottom: 1.5rem;
+        right: 0;
+        z-index: 1000;
+        display: flex;
+        flex-direction: row;
+        align-items: flex-end;
+        gap: 0;
+      }
+
+      /* 右下角浮动按钮 */
+      .fab {
+        width: 56px;
+        height: 56px;
+        border-radius: 12px;
+        background: white;
+        color: #4b5563;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.25rem;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        cursor: pointer;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        border: 1px solid #e5e7eb;
+        margin-right: 0.75rem;
+      }
+
+      .fab:hover {
+        background: #f9fafb;
+        color: #1f2937;
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+      }
+
+      .fab svg {
+        width: 24px;
+        height: 24px;
+      }
+
+      /* 联系文字 - 彩虹渐变（使用最高优先级）*/
+      .fab-text,
+      .fab .fab-text,
+      button.fab .fab-text,
+      button.fab span.fab-text {
+        font-size: 0.75rem !important;
+        font-weight: 500 !important;
+        font-family: 'ZCOOL KuHei', 'Microsoft YaHei', 'PingFang SC', sans-serif !important;
+        letter-spacing: 0.08em !important;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 25%, #f093fb 50%, #4facfe 75%, #00f2fe 100%) !important;
+        background-size: 200% 200% !important;
+        -webkit-background-clip: text !important;
+        -webkit-text-fill-color: transparent !important;
+        background-clip: text !important;
+        animation: rainbow-flow 4s ease infinite !important;
+        text-rendering: optimizeLegibility !important;
+        -webkit-font-smoothing: antialiased !important;
+        -moz-osx-font-smoothing: grayscale !important;
+      }
+
+      /* 确保图标正常显示 */
+      .fab svg,
+      button.fab svg {
+        -webkit-text-fill-color: currentColor !important;
+        color: currentColor !important;
+        background: transparent !important;
+        -webkit-background-clip: border-box !important;
+        background-clip: border-box !important;
+        animation: none !important;
+      }
+
+      /* 弹窗 */
+      .feedback-popup {
+        position: relative;
+        width: 280px;
+        margin-right: 0.75rem;
+        opacity: 0;
+        pointer-events: none;
+        transform: translateX(40px);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+
+      .feedback-popup.show {
+        opacity: 1;
+        pointer-events: auto;
+        transform: translateX(0);
+      }
+
+      .feedback-content {
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+        border: 1px solid #e5e7eb;
+        overflow: hidden;
+      }
+
+      .feedback-body {
+        padding: 1.5rem;
+        text-align: center;
+      }
+
+      .feedback-qr {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .feedback-qr img {
+        border-radius: 8px;
+        border: 1px solid #e5e7eb;
+        margin-bottom: 0.5rem;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+      }
+
+      .feedback-title {
+        font-weight: 600;
+        color: #1f2937;
+        font-size: 0.875rem;
+      }
+
+      .feedback-desc {
+        font-size: 0.75rem;
+        color: #6b7280;
+        line-height: 1.5;
+      }
+
+      /* 移动端适配 */
+      @media (max-width: 768px) {
+        .feedback-popup {
+          width: 260px;
+        }
+
+        .feedback-body {
+          padding: 1rem;
+        }
+
+        .feedback-qr img {
+          width: 100px;
+          height: 100px;
+        }
+      }
+    </style>
+  </head>
+  <body class="__variable_07ea09 __variable_871795 antialiased">
+    <div
+      class="min-h-screen bg-blue-50 bg-gradient-to-br from-blue-50 to-indigo-100 flex flex-col"
+    >
+      <header role="banner">
+        <header class="border-b bg-white">
+          <div
+            class="container mx-auto px-4 h-16 flex items-center justify-between"
+          >
+            <a class="flex items-center" href="index.html"
+              ><span class="logo-title"
+                >发票打印助手</span
+              ></a
+            >
+            <div class="flex items-center gap-4">
+              <a href="index.html"
+                ><button
+                  data-slot="button"
+                  class="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*=&#x27;size-&#x27;])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-accent dark:hover:bg-accent/50 h-8 rounded-md px-3 has-[&gt;svg]:px-2.5 gap-2 text-gray-600 hover:text-black"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="24"
+                    height="24"
+                    viewbox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    class="lucide lucide-house h-4 w-4"
+                    aria-hidden="true"
+                  >
+                    <path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"></path>
+                    <path
+                      d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"
+                    ></path></svg
+                  ><span class="hidden sm:inline home-btn-text">返回首页</span>
+                </button></a
+              >
+            </div>
+          </div>
+        </header>
+      </header>
+      <main
+        role="main"
+        class="max-w-7xl w-full mx-auto p-4 flex flex-col flex-1"
+      >
+        <div class="sr-only">
+          <h1>发票打印助手 - PDF电子发票批量处理工具</h1>
+          <p>
+            专业的PDF电子发票处理平台，专门处理PDF格式电子发票文件的批量上传、智能合并、自动统计、一键打印和数据导出功能。适用于企业财务人员、会计师、出纳员进行电子发票管理和数字化报销流程优化。
+          </p>
+          <h2>主要功能特色</h2>
+          <ul>
+            <li>PDF电子发票批量上传 - 支持拖拽上传多个PDF格式电子发票文件</li>
+            <li>智能电子发票识别 - 自动提取PDF发票代码、号码、金额信息</li>
+            <li>电子发票合并打印 - 多张PDF发票合并为A4双联格式，节省纸张</li>
+            <li>PDF实时预览功能 - 电子发票文件在线预览，支持缩放和打印</li>
+            <li>
+              电子发票统计数据导出 - PDF发票信息生成CSV文件，便于Excel管理
+            </li>
+            <li>一键打印服务 - 批量打印合并后的PDF电子发票文件</li>
+          </ul>
+          <h2>适用场景和用户</h2>
+          <p>
+            企业电子发票月度报销、季度数字化财务整理、年终电子账务处理、税务申报准备。适用于处理PDF电子发票的中小企业财务部门、会计师事务所、代理记账公司、个体工商户等。
+          </p>
+          <h2>技术支持</h2>
+          <p>
+            专门支持PDF格式的增值税专用发票、普通发票、机动车发票等各类电子发票。专注于PDF文件批量导入处理，提供电子发票信息自动识别和数据提取功能。
+          </p>
+        </div>
+        <div class="flex-1"></div>
+        <section
+          aria-label="发票处理工作区"
+          class="grid grid-cols-1 lg:grid-cols-3 gap-6"
+        >
+          <aside
+            class="space-y-6 lg:col-start-2"
+            role="complementary"
+            aria-label="文件管理和统计区域"
+          >
+            <div
+              data-slot="card"
+              class="bg-card text-card-foreground flex flex-col gap-6 rounded-xl border py-6 shadow-sm"
+              role="region"
+              aria-label="文件上传区域"
+            >
+              <div
+                data-slot="card-header"
+                class="@container/card-header grid auto-rows-min grid-rows-[auto_auto] items-start gap-1.5 px-6 has-data-[slot=card-action]:grid-cols-[1fr_auto] [.border-b]:pb-6"
+              >
+                <div
+                  data-slot="card-title"
+                  class="leading-none font-semibold flex items-center gap-2"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="24"
+                    height="24"
+                    viewbox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    class="lucide lucide-upload h-5 w-5"
+                    aria-hidden="true"
+                  >
+                    <path d="M12 3v12"></path>
+                    <path d="m17 8-5-5-5 5"></path>
+                    <path
+                      d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"
+                    ></path></svg
+                  >添加发票文件
+                </div>
+              </div>
+              <div data-slot="card-content" class="px-6">
+                <div
+                  role="button"
+                  tabindex="0"
+                  class="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors border-gray-300 hover:border-gray-400"
+                  aria-label="点击选择或拖拽上传PDF发票文件"
+                >
+                  <input
+                    accept="application/pdf,.pdf"
+                    multiple=""
+                    type="file"
+                    style="
+                      border: 0;
+                      clip: rect(0, 0, 0, 0);
+                      clip-path: inset(50%);
+                      height: 1px;
+                      margin: 0 -1px -1px 0;
+                      overflow: hidden;
+                      padding: 0;
+                      position: absolute;
+                      width: 1px;
+                      white-space: nowrap;
+                    "
+                    tabindex="-1"
+                    aria-label="选择PDF发票文件"
+                  /><svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="24"
+                    height="24"
+                    viewbox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    class="lucide lucide-file-text h-10 w-10 mx-auto text-gray-400 mb-3"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"
+                    ></path>
+                    <path d="M14 2v4a2 2 0 0 0 2 2h4"></path>
+                    <path d="M10 9H8"></path>
+                    <path d="M16 13H8"></path>
+                    <path d="M16 17H8"></path>
+                  </svg>
+                  <div>
+                    <p class="text-base text-gray-600 mb-1">
+                      把发票文件拖进来这里
+                    </p>
+                    <p class="text-sm text-gray-500">
+                      或点击选择文件（支持多选）
+                    </p>
+                  </div>
+                  <div class="sr-only">
+                    <h3>PDF电子发票文件上传功能</h3>
+                    <p>
+                      专门支持批量上传PDF格式的电子发票文件，包括增值税专用发票、普通发票等各类电子发票。可通过拖拽或点击选择的方式上传多个PDF文件，系统会自动识别和处理电子发票信息，不支持纸质发票处理。
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </aside>
+        </section>
+        <div class="flex-1"></div>
+        <section class="mt-8" aria-label="产品功能特色介绍">
+          <div class="sr-only">
+            <h2>发票打印助手核心功能优势</h2>
+            <p>
+              发票打印助手提供全面的电子发票处理解决方案，帮助企业财务人员提升工作效率，简化报销流程，实现发票管理的数字化转型。
+            </p>
+            <h3>功能详细说明</h3>
+            <dl>
+              <dt>一键打印功能</dt>
+              <dd>
+                支持批量打印合并后的PDF发票文件，无需逐张处理，大幅提升打印效率。适用于财务报销、税务申报等场景。
+              </dd>
+              <dt>智能合并技术</dt>
+              <dd>
+                采用先进的PDF处理算法，自动将多张发票合并为A4双联格式，最大化利用纸张空间，节省50%的打印成本。
+              </dd>
+              <dt>数据导出服务</dt>
+              <dd>
+                自动提取发票关键信息包括发票代码、号码、金额等，生成标准CSV格式文件，便于导入Excel进行财务管理。
+              </dd>
+              <dt>批量处理能力</dt>
+              <dd>
+                支持同时上传处理多个PDF发票文件，提供拖拽上传和多选上传方式，大幅提升文件处理效率。
+              </dd>
+            </dl>
+          </div>
+          <div
+            class="w-full max-w-5xl mx-auto py-6 px-4 flex flex-col md:flex-row justify-around items-start gap-6 bg-white rounded-xl shadow-sm border"
+          >
+            <article class="flex flex-col max-w-xs">
+              <div class="flex items-center gap-2 mb-2">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="24"
+                  height="24"
+                  viewbox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  class="lucide lucide-printer w-5 h-5 text-orange-600"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"
+                  ></path>
+                  <path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"></path>
+                  <rect x="6" y="14" width="12" height="8" rx="1"></rect>
+                </svg>
+                <h3 class="text-lg font-semibold text-gray-800">一键打印</h3>
+              </div>
+              <p class="text-sm text-gray-500">
+                多张发票一键打印，无需单张繁琐提交
+              </p>
+              <span class="sr-only"
+                >PDF电子发票批量打印功能，支持PDF格式电子发票文件直接打印，提升数字化财务工作效率</span
+              >
+            </article>
+            <article class="flex flex-col max-w-xs">
+              <div class="flex items-center gap-2 mb-2">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="24"
+                  height="24"
+                  viewbox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  class="lucide lucide-layout-template w-5 h-5 text-green-600"
+                  aria-hidden="true"
+                >
+                  <rect width="18" height="7" x="3" y="3" rx="1"></rect>
+                  <rect width="9" height="7" x="3" y="14" rx="1"></rect>
+                  <rect width="5" height="7" x="16" y="14" rx="1"></rect>
+                </svg>
+                <h3 class="text-lg font-semibold text-gray-800">智能合并</h3>
+              </div>
+              <p class="text-sm text-gray-500">自动合并为A4双联，节省50%纸张</p>
+              <span class="sr-only"
+                >PDF电子发票智能合并技术，A4双联格式，节省打印成本，环保高效的数字化处理</span
+              >
+            </article>
+            <article class="flex flex-col max-w-xs">
+              <div class="flex items-center gap-2 mb-2">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="24"
+                  height="24"
+                  viewbox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  class="lucide lucide-file-spreadsheet w-5 h-5 text-purple-600"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"
+                  ></path>
+                  <path d="M14 2v4a2 2 0 0 0 2 2h4"></path>
+                  <path d="M8 13h2"></path>
+                  <path d="M14 13h2"></path>
+                  <path d="M8 17h2"></path>
+                  <path d="M14 17h2"></path>
+                </svg>
+                <h3 class="text-lg font-semibold text-gray-800">数据导出</h3>
+              </div>
+              <p class="text-sm text-gray-500">
+                发票信息生成CSV，便于Excel管理
+              </p>
+              <span class="sr-only"
+                >PDF电子发票数据自动提取导出，CSV格式兼容Excel，便于数字化财务数据管理</span
+              >
+            </article>
+            <article class="flex flex-col max-w-xs">
+              <div class="flex items-center gap-2 mb-2">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="24"
+                  height="24"
+                  viewbox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  class="lucide lucide-cloud-upload w-5 h-5 text-blue-600"
+                  aria-hidden="true"
+                >
+                  <path d="M12 13v8"></path>
+                  <path
+                    d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"
+                  ></path>
+                  <path d="m8 17 4-4 4 4"></path>
+                </svg>
+                <h3 class="text-lg font-semibold text-gray-800">批量处理</h3>
+              </div>
+              <p class="text-sm text-gray-500">拖拽或多选文件，一键批量上传</p>
+              <span class="sr-only"
+                >支持批量上传PDF格式电子发票文件，拖拽操作，多个电子发票文件同时处理</span
+              >
+            </article>
+            <article class="flex flex-col max-w-xs">
+              <div class="flex items-center gap-2 mb-2">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="24"
+                  height="24"
+                  viewbox="0 0 24 24"
+                  fill="none"
+                  stroke="#db2777"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  class="lucide lucide-copy w-5 h-5"
+                  aria-hidden="true"
+                >
+                  <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
+                  <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
+                </svg>
+                <h3 class="text-lg font-semibold text-gray-800">一键复制</h3>
+              </div>
+              <p class="text-sm text-gray-500">复制文件并直接打印，绕过MD5去重限制</p>
+              <span class="sr-only"
+                >智能文件复制功能，自动修改文件内容改变MD5值，支持重复文件处理和批量打印</span
+              >
+            </article>
+          </div>
+          <div class="sr-only">
+            <h2>使用教程和技术支持</h2>
+            <p>
+              发票打印助手操作简单，仅需三步即可完成PDF电子发票处理：上传PDF格式电子发票文件、自动识别处理、下载合并结果。支持Windows、Mac、移动端等多平台使用，专门处理电子发票。
+            </p>
+            <h2>适用行业和企业规模</h2>
+            <p>
+              适用于需要处理PDF电子发票的各类企业财务部门，包括中小企业、创业公司、代理记账公司、会计师事务所等。特别适合有大量电子发票处理需求的数字化企业用户。
+            </p>
+            <h2>安全保障和隐私保护</h2>
+            <p>
+              采用企业级安全标准，确保PDF电子发票数据安全。所有电子发票文件处理均在云端完成，不保存用户敏感信息，保护企业电子发票数据隐私。
+            </p>
+          </div>
+        </section>
+      </main>
+      <div
+        class="fixed top-0 right-0 h-full z-50 bg-white shadow-2xl transition-all duration-300 ease-in-out translate-x-full opacity-0"
+        style="width: 70%; min-width: 400px; max-width: 800px"
+      >
+        <div class="w-full h-full flex flex-col"></div>
+      </div>
+    </div>
+    <!--$--><!--/$--><!--$--><!--/$-->
+    
+    <!-- Floating Feedback Button - 简洁版（参考 index.html）-->
+    <div class="feedback-container">
+      <div class="feedback-popup" id="feedbackPopup">
+        <div class="feedback-content">
+          <div class="feedback-body">
+            <div class="feedback-qr">
+              <img src="static/picture/qywxkf.png" alt="工程师微信二维码" width="128" height="128">
+              <p class="feedback-title">扫码添加工程师微信</p>
+              <p class="feedback-desc">深度交流技术问题，获得专业支持</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <button class="fab" id="feedbackBtn" aria-label="联系">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"></path>
+        </svg>
+        <span class="fab-text">联系</span>
+      </button>
+    </div>
+    <section
+      aria-label="Notifications alt+T"
+      tabindex="-1"
+      aria-live="polite"
+      aria-relevant="additions text"
+      aria-atomic="false"
+    ></section>
+    <script
+      src="static/js/webpack-57c01fedb6eeb9b7.js"
+      crossorigin=""
+      async=""
+    ></script>
+    <script>
+      (self.__next_f = self.__next_f || []).push([0]);
+    </script>
+    <script>
+      self.__next_f.push([
+        1,
+        '1:"$Sreact.fragment"\n3:I[7555,[],""]\n4:I[1295,[],""]\n5:I[894,[],"ClientPageRoot"]\n6:I[1884,["991","static/chunks/9e2a4553-1051cddca6dad9d2.js","84","static/chunks/9b0008ae-271aa26b9a487cb1.js","69","static/chunks/69-b5c145e548446ae2.js","715","static/chunks/715-a79d9f7d55842c15.js","53","static/chunks/53-e710f283f052665c.js","822","static/chunks/822-15d7cef10fdae15f.js","945","static/chunks/945-3d3b1445bc289805.js","788","static/chunks/788-dbcaeaad83012140.js","536","static/chunks/536-f4e623b870e76498.js","798","static/chunks/app/main/page-3f67d3909d5cd6ef.js"],"default"]\n9:I[9665,[],"MetadataBoundary"]\nb:I[9665,[],"OutletBoundary"]\ne:I[4911,[],"AsyncMetadataOutlet"]\n10:I[9665,[],"ViewportBoundary"]\n12:I[6614,[],""]\n:HL["https://cdn.xuante.top:44300/cdns1.bangnimang.net/fapiao-ng/_next/static/media/569ce4b8f30dc480-s.p.woff2","font",{"crossOrigin":"","type":"font/woff2"}]\n:HL["https://cdn.xuante.top:44300/cdns1.bangnimang.net/fapiao-ng/_next/static/media/93f479601ee12b01-s.p.woff2","font",{"crossOrigin":"","type":"font/woff2"}]\n:HL["https://cdn.xuante.top:44300/cdns1.bangnimang.net/fapiao-ng/_next/static/css/99cf83cb2d1b01ec.css","style",{"crossOrigin":""}]\n:HL["https://cdn.xuante.top:44300/cdns1.bangnimang.net/fapiao-ng/_next/static/css/dce7a9443e3db38d.css","style",{"crossOrigin":""}]\n:HL["https://cdn.xuante.top:44300/cdns1.bangnimang.net/fapiao-ng/_next/static/css/b7cb32cf4a7bfafb.css","style",{"crossOrigin":""}]\n0:{"P":null,"b":"1CB4bMbuDRQJUWY5RPPEz","p":"https://cdn.xuante.top:44300/cdns1.bangnimang.net/fapiao-ng","c":["","main",""],"i":false,"f":[[["",{"children":["main",{"children":["__PAGE__",{}]}]},"$undefined","$undefined",true],["",["$","$1","c",{"children":[[["$","link","0",{"rel":"stylesheet","href":"https://cdn.xuante.top:44300/cdns1.bangnimang.net/fapiao-ng/_next/static/css/99cf83cb2d1b01ec.css","precedence":"next","crossOrigin":"anonymous","nonce":"$undefined"}],["$","link","1",{"rel":"stylesheet","href":"https://cdn.xuante.top:44300/cdns1.bangnimang.net/fapiao-ng/_next/static/css/dce7a9443e3db38d.css","precedence":"next","crossOrigin":"anonymous","nonce":"$undefined"}]],"$L2"]}],{"children":["main",["$","$1","c",{"children":[null,["$","$L3",null,{"parallelRouterKey":"children","error":"$undefined","errorStyles":"$undefined","errorScripts":"$undefined","template":["$","$L4",null,{}],"templateStyles":"$undefined","templateScripts":"$undefined","notFound":"$undefined","forbidden":"$undefined","unauthorized":"$undefined"}]]}],{"children":["__PAGE__",["$","$1","c",{"children":[["$","$L5",null,{"Component":"$6","searchParams":{},"params":{},"promises":["$@7","$@8"]}],["$","$L9",null,{"children":"$La"}],[["$","link","0",{"rel":"stylesheet","href":"https://cdn.xuante.top:44300/cdns1.bangnimang.net/fapiao-ng/_next/static/css/b7cb32cf4a7bfafb.css","precedence":"next","crossOrigin":"anonymous","nonce":"$undefined"}]],["$","$Lb",null,{"children":["$Lc","$Ld",["$","$Le",null,{"promise":"$@f"}]]}]]}],{},null,false]},null,false]},null,false],["$","$1","h",{"children":[null,["$","$1","ma1-EA4rLJ74m1HGEmWyn",{"children":[["$","$L10",null,{"children":"$L11"}],["$","meta",null,{"name":"next-size-adjust","content":""}]]}],null]}],false]],"m":"$undefined","G":["$12","$undefined"],"s":false,"S":true}\n',
+      ]);
+    </script>
+    <script>
+      self.__next_f.push([
+        1,
+        '13:"$Sreact.suspense"\n14:I[4911,[],"AsyncMetadata"]\n7:{}\n8:{}\na:["$","$13",null,{"fallback":null,"children":["$","$L14",null,{"promise":"$@15"}]}]\n',
+      ]);
+    </script>
+    <script>
+      self.__next_f.push([1, "d:null\n"]);
+    </script>
+    <script>
+      self.__next_f.push([
+        1,
+        '17:I[9074,["991","static/chunks/9e2a4553-1051cddca6dad9d2.js","69","static/chunks/69-b5c145e548446ae2.js","715","static/chunks/715-a79d9f7d55842c15.js","822","static/chunks/822-15d7cef10fdae15f.js","49","static/chunks/49-add9fdb10e8e322d.js","788","static/chunks/788-dbcaeaad83012140.js","177","static/chunks/app/layout-28493c0e31344be9.js"],"Toaster"]\n18:I[6485,["991","static/chunks/9e2a4553-1051cddca6dad9d2.js","69","static/chunks/69-b5c145e548446ae2.js","715","static/chunks/715-a79d9f7d55842c15.js","822","static/chunks/822-15d7cef10fdae15f.js","49","static/chunks/49-add9fdb10e8e322d.js","788","static/chunks/788-dbcaeaad83012140.js","177","static/chunks/app/layout-28493c0e31344be9.js"],"StagewiseToolbar"]\n19:I[8865,["991","static/chunks/9e2a4553-1051cddca6dad9d2.js","69","static/chunks/69-b5c145e548446ae2.js","715","static/chunks/715-a79d9f7d55842c15.js","822","static/chunks/822-15d7cef10fdae15f.js","49","static/chunks/49-add9fdb10e8e322d.js","788","static/chunks/788-dbcaeaad83012140.js","177","static/chunks/app/layout-28493c0e31344be9.js"],"ReactPlugin"]\n2:["$","html",null,{"lang":"zh","children":["$","body",null,{"className":"__variable_07ea09 __variable_871795 antialiased","children":["$L16",["$","$L17",null,{"richColors":true,"expand":true}],["$","$L18",null,{"config":{"plugins":["$19"]}}]]}]}]\n',
+      ]);
+    </script>
+    <script>
+      self.__next_f.push([
+        1,
+        '1a:I[6096,["991","static/chunks/9e2a4553-1051cddca6dad9d2.js","69","static/chunks/69-b5c145e548446ae2.js","715","static/chunks/715-a79d9f7d55842c15.js","822","static/chunks/822-15d7cef10fdae15f.js","49","static/chunks/49-add9fdb10e8e322d.js","788","static/chunks/788-dbcaeaad83012140.js","177","static/chunks/app/layout-28493c0e31344be9.js"],"default"]\n1b:I[9543,["69","static/chunks/69-b5c145e548446ae2.js","53","static/chunks/53-e710f283f052665c.js","345","static/chunks/app/not-found-b4d5784393f6b675.js"],"default"]\n1c:I[951,["991","static/chunks/9e2a4553-1051cddca6dad9d2.js","69","static/chunks/69-b5c145e548446ae2.js","715","static/chunks/715-a79d9f7d55842c15.js","822","static/chunks/822-15d7cef10fdae15f.js","49","static/chunks/49-add9fdb10e8e322d.js","788","static/chunks/788-dbcaeaad83012140.js","177","static/chunks/app/layout-28493c0e31344be9.js"],"Initializer"]\n11:[["$","meta","0",{"charSet":"utf-8"}],["$","meta","1",{"name":"viewport","content":"width=device-width, initial-scale=1"}]]\n',
+      ]);
+    </script>
+    <script>
+      self.__next_f.push([
+        1,
+        '16:["$","$L1a",null,{"formats":"$undefined","locale":"zh","messages":{"Common":{"name":"发票打印助手","longName":"发票打印助手","slogan":"让报销更简单，让财务更轻松","backToHome":"返回首页","confirm":"确定","cancel":"取消","close":"关闭","iKnow":"知道了","dontShowAgain":"不再显示","clear":"清空","delete":"删除","download":"下载","upload":"上传","processing":"处理中","completed":"完成","failed":"失败","pending":"等待","loading":"加载中"},"HomePage":{"run":"马上使用","description":"专业的电子发票合并打印解决方案","features":{"merge":"电子发票合并","batch":"批量处理","autoStats":"自动统计","oneClickPrint":"一键打印","pdfOptimize":"PDF优化","csvExport":"CSV导出"},"icp":"浙ICP备2023031851号-4"},"MainPage":{"dragUpload":"拖拽上传发票文件，自动合并处理","pdfPreview":"合并后预览","processing":"正在处理发票文件...","uploadedFiles":"上传的文件","invoiceCount":"发票数","amount":"金额","operations":"操作","downloadMerged":"下载合并文件","saveStats":"保存统计文件 (CSV)","confirmClear":"确认清空","clearConfirmMessage":"清空当前页面，您确定要继续吗？","stats":"发票统计","invoiceCountLabel":"发票数量:","totalAmountLabel":"总金额:","dividerLine":"分割线","dividerDesc":"A4双发票布局，便于裁剪","usageInstructions":"使用说明","features":"功能特点","featureList":{"batchUpload":"支持批量上传PDF发票文件","autoExtract":"自动提取发票代码、号码和金额","smartMerge":"智能合并为A4双发票布局","realTimePreview":"实时预览合并后的PDF文件"},"tips":"操作技巧","tipsList":{"dragDrop":"可直接拖拽文件到上传区域","multiSelect":"支持Ctrl/Shift多选文件","paperSaving":"合并后的PDF节约50%纸张","csvImport":"CSV文件可导入Excel进行管理"},"uploadTitle":"添加发票文件","uploadDescription":"支持拖拽上传或点击选择多个PDF发票文件","dropFiles":"放开文件开始上传...","dragFilesHere":"把发票文件拖进来这里","clickToSelect":"或点击选择文件（支持多选）","downloadMergedFileName":"发票打印助手_合并","downloadStatsFileName":"发票打印助手_统计","invoiceCountUnit":"张"},"TipsDialog":{"title":"实用技巧","question":"添加发票文件时，您一次只选择一个文件吗？好累哦 😥","solution":"您其实可以一次添加多个文件的:","instruction":"在点击\\"添加发票文件\\"按钮后打开的文件对话框中：","ctrlClickDesc":"点选多个文件","shiftClickDesc":"选择连续的多个文件","dragTip":"此外，您还可以直接把发票文件拖拽进网页来进行添加操作。","mouseLeftClick":"鼠标左键"},"Metadata":{"title":"发票打印助手","description":"专业的电子发票处理解决方案，支持批量合并、自动统计、一键打印。让报销更简单，让财务更轻松。免费在线使用。","keywords":"电子发票,发票合并,发票处理,PDF合并,批量处理,财务工具,报销工具,发票统计,发票打印","ogTitle":"发票打印助手 - 让报销更简单，让财务更轻松","ogDescription":"专业的电子发票处理解决方案，支持批量合并、自动统计、一键打印","twitterTitle":"发票打印助手","twitterDescription":"专业的电子发票处理解决方案，让报销更简单，让财务更轻松"},"CSVHeaders":{"invoiceCode":"发票代码","invoiceNumber":"发票号码","amount":"金额","fileName":"文件名"}},"now":"$undefined","timeZone":"Asia/Shanghai","children":[["$","$L3",null,{"parallelRouterKey":"children","error":"$undefined","errorStyles":"$undefined","errorScripts":"$undefined","template":["$","$L4",null,{}],"templateStyles":"$undefined","templateScripts":"$undefined","notFound":[["$","$L1b",null,{}],[]],"forbidden":"$undefined","unauthorized":"$undefined"}],["$","$L1c",null,{}]]}]\n',
+      ]);
+    </script>
+    <script>
+      self.__next_f.push([1, "c:null\n"]);
+    </script>
+    <script>
+      self.__next_f.push([
+        1,
+        '15:{"metadata":[["$","title","0",{"children":"发票打印助手"}],["$","meta","1",{"name":"description","content":"专业的电子发票处理解决方案，支持批量合并、自动统计、一键打印。让报销更简单，让财务更轻松。免费在线使用。"}],["$","meta","2",{"name":"author","content":"发票打印助手"}],["$","link","3",{"rel":"manifest","href":"/manifest.json","crossOrigin":"$undefined"}],["$","meta","4",{"name":"keywords","content":"电子发票,发票合并,发票处理,PDF合并,批量处理,财务工具,报销工具,发票统计,发票打印"}],["$","meta","5",{"name":"creator","content":"发票打印助手"}],["$","meta","6",{"name":"publisher","content":"发票打印助手"}],["$","meta","7",{"name":"robots","content":"index, follow"}],["$","meta","8",{"name":"apple-mobile-web-app-title","content":"发票打印助手"}],["$","meta","9",{"property":"og:title","content":"发票打印助手 - 让报销更简单，让财务更轻松"}],["$","meta","10",{"property":"og:description","content":"专业的电子发票处理解决方案，支持批量合并、自动统计、一键打印"}],["$","meta","11",{"property":"og:locale","content":"zh_CN"}],["$","meta","12",{"property":"og:type","content":"website"}],["$","meta","13",{"name":"twitter:card","content":"summary_large_image"}],["$","meta","14",{"name":"twitter:title","content":"发票打印助手"}],["$","meta","15",{"name":"twitter:description","content":"专业的电子发票处理解决方案，让报销更简单，让财务更轻松"}],["$","link","16",{"rel":"icon","href":"/favicon.ico","type":"image/x-icon","sizes":"48x48"}],["$","link","17",{"rel":"icon","href":"/icon0.svg?eb1262b39108723a","type":"image/svg+xml","sizes":"any"}],["$","link","18",{"rel":"icon","href":"/icon1.png?873064b22fb970bd","type":"image/png","sizes":"96x96"}],["$","link","19",{"rel":"apple-touch-icon","href":"/apple-icon.png?477d8be8c2b1658d","type":"image/png","sizes":"180x180"}]],"error":null,"digest":"$undefined"}\nf:{"metadata":"$15:metadata","error":null,"digest":"$undefined"}\n',
+      ]);
+    </script>
+  <!-- GitHub 链接动态插入脚本 -->
+  <script>
+    (function() {
+      function createGithubElements() {
+        // 检查是否已存在，避免重复添加
+        if (document.getElementById('github-float-custom')) {
+          return;
+        }
+        
+        // 创建左下角浮动按钮
+        const floatBtn = document.createElement('a');
+        floatBtn.id = 'github-float-custom';
+        floatBtn.href = 'https://github.com/Tom-wc/fpzs';
+        floatBtn.target = '_blank';
+        floatBtn.rel = 'noopener noreferrer';
+        floatBtn.style.cssText = 'position: fixed; bottom: 20px; left: 20px; z-index: 999999; background: #24292e; color: white; padding: 10px 16px; border-radius: 8px; text-decoration: none; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); transition: all 0.3s ease; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; font-weight: 500;';
+        floatBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg><span>⭐ Star on GitHub</span>';
+        floatBtn.onmouseover = function() { this.style.background='#1a1e22'; this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 16px rgba(0,0,0,0.2)'; };
+        floatBtn.onmouseout = function() { this.style.background='#24292e'; this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.15)'; };
+        
+        // 插入到body
+        document.body.appendChild(floatBtn);
+      }
+      
+      // 页面加载后插入
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', createGithubElements);
+      } else {
+        createGithubElements();
+      }
+      
+      // 延迟执行确保在所有脚本后
+      setTimeout(createGithubElements, 500);
+      setTimeout(createGithubElements, 1500);
+      setTimeout(createGithubElements, 3000);
+      
+      // 定期检查并重新插入（如果被删除）
+      setInterval(createGithubElements, 2000);
+    })();
+  </script>
+  <script>
+    (function () {
+      function textIncludes(node, keywords) {
+        if (!node) return false;
+        const text = (node.innerText || node.textContent || "").trim();
+        return keywords.some((k) => text.includes(k));
+      }
+      function isClickable(node) {
+        return (
+          node.matches &&
+          (node.matches("button, a, [role='button'], [data-slot='button']") ||
+            (node.closest &&
+              node.closest("button, a, [role='button'], [data-slot='button']")))
+        );
+      }
+      function getClickable(node) {
+        if (!node) return null;
+        return node.matches && node.matches("button, a, [role='button'], [data-slot='button']")
+          ? node
+          : (node.closest && node.closest("button, a, [role='button'], [data-slot='button']")) || null;
+      }
+      // ====== PDF 打印逻辑：优先打印合并后的 PDF ======
+      let lastPdfUrl = null;
+      function setLastPdfUrl(url) {
+        if (!url) return;
+        lastPdfUrl = url;
+      }
+      // 不再禁用 PDF 查看器，允许正常预览
+      const originalCreateObjectURL = URL.createObjectURL;
+      URL.createObjectURL = function () {
+        try {
+          const obj = arguments[0];
+          const type = (obj && obj.type) || "";
+          const url = originalCreateObjectURL.apply(URL, arguments);
+          if (type.includes("pdf") || /\.pdf(\?|$)/i.test(url)) {
+            setLastPdfUrl(url);
+          }
+          return url;
+        } catch (e) {
+          return originalCreateObjectURL.apply(URL, arguments);
+        }
+      };
+      // ====== 监控 PDF 响应 ======
+      const originalFetch = window.fetch;
+      window.fetch = async function () {
+        const res = await originalFetch.apply(this, arguments);
+        try {
+          const ct = (res.headers && res.headers.get && res.headers.get("content-type")) || "";
+          if (ct && ct.includes("application/pdf")) {
+            const blob = await res.clone().blob();
+            const pdfUrl = URL.createObjectURL(blob);
+            setLastPdfUrl(pdfUrl);
+            console.log('[PDF] PDF已生成:', pdfUrl.substring(0, 50) + '...');
+          }
+        } catch (e) {}
+        return res;
+      };
+      function scanForPdfLinks(root = document) {
+        const nodes = root.querySelectorAll(
+          'a[href$=".pdf"], a[href^="blob:"], a[href*=".pdf?"], embed[type="application/pdf"], object[type="application/pdf"], iframe[src$=".pdf"], iframe[src^="blob:"]'
+        );
+        nodes.forEach((n) => {
+          const url = n.href || n.src;
+          if (url) setLastPdfUrl(url);
+        });
+      }
+      async function printPdf(url) {
+        if (!url) return false;
+        // 只使用隐藏 iframe，不打开新窗口
+        try {
+          let iframe = document.getElementById("__hidden_pdf_printer");
+          if (!iframe) {
+            iframe = document.createElement("iframe");
+            iframe.id = "__hidden_pdf_printer";
+            iframe.style.position = "fixed";
+            iframe.style.right = "0";
+            iframe.style.bottom = "0";
+            iframe.style.width = "0";
+            iframe.style.height = "0";
+            iframe.style.border = "0";
+            iframe.style.opacity = "0";
+            iframe.style.pointerEvents = "none";
+            document.body.appendChild(iframe);
+          }
+          return new Promise((resolve) => {
+            const onLoad = () => {
+              setTimeout(() => {
+                try {
+                  if (iframe.contentWindow) {
+                    iframe.contentWindow.focus();
+                    iframe.contentWindow.print();
+                  }
+                } catch (e) {
+                  console.warn("打印失败，尝试回退到整页打印", e);
+                  window.print();
+                }
+              }, 300);
+              iframe.removeEventListener("load", onLoad);
+              resolve(true);
+            };
+            iframe.addEventListener("load", onLoad);
+            iframe.src = url;
+          });
+        } catch (e) {
+          console.error("PDF 打印失败", e);
+          return false;
+        }
+      }
+      // ====== 下载和打印按钮绕过机制 ======
+      const printKeywords = ["一键打印", "立即打印", "Print"];
+      const downloadKeywords = ["下载", "Download", "下载合并", "保存统计"];
+      
+      document.addEventListener(
+        "click",
+        async (ev) => {
+          const target = ev.target;
+          if (!isClickable(target)) return;
+          const btn = getClickable(target);
+          
+          // 排除标题和导航链接
+          const isHeader = btn && (btn.closest('header') || btn.tagName === 'H1' || btn.tagName === 'H2' || btn.tagName === 'H3');
+          if (isHeader) return;
+          
+          // 处理下载按钮 - 自动确认
+          if (btn && textIncludes(btn, downloadKeywords)) {
+            console.log('[下载] 检测到下载按钮点击');
+            // 不阻止事件，让下载正常进行
+            return;
+          }
+          
+          // 处理打印按钮
+          if (btn && textIncludes(btn, printKeywords)) {
+            console.log('[打印] 🖨️ 检测到打印按钮点击');
+            ev.preventDefault();
+            ev.stopPropagation();
+            try {
+              console.log('[打印] 正在查找PDF...');
+              // 等待合并 PDF 生成（最多 8 秒，每 400ms 轮询一次）
+              const deadline = Date.now() + 8000;
+              let url = lastPdfUrl;
+              let attempts = 0;
+              while (!url && Date.now() < deadline) {
+                scanForPdfLinks();
+                url = lastPdfUrl;
+                if (url) {
+                  console.log('[打印] ✅ 找到PDF:', url.substring(0, 50) + '...');
+                  break;
+                }
+                attempts++;
+                if (attempts % 5 === 0) {
+                  console.log('[打印] ⏳ 等待PDF生成... 尝试次数:', attempts);
+                }
+                await new Promise((r) => setTimeout(r, 400));
+              }
+              if (url) {
+                console.log('[打印] 🖨️ 开始打印PDF');
+                await printPdf(url);
+              } else {
+                console.log('[打印] ⚠️ 未找到PDF，使用window.print()');
+                window.print();
+              }
+            } catch (e) {
+              console.error('[打印] ❌ 打印失败:', e);
+            }
+          }
+        },
+        true
+      );
+      // ====== 全局 confirm 自动确认 ======
+      const originalConfirmGlobal = window.confirm;
+      window.confirm = function () {
+        return true;
+      };
+      
+      // ====== 初始扫描 PDF ======
+      scanForPdfLinks();
+      
+      // ====== 监控新增的 PDF 元素 ======
+      const mo = new MutationObserver((mutations) => {
+        for (const m of mutations) {
+          m.addedNodes.forEach((n) => {
+            if (!(n instanceof Element)) return;
+            scanForPdfLinks(n);
+          });
+        }
+      });
+      mo.observe(document.documentElement, { childList: true, subtree: true });
+       window.addEventListener("beforeunload", () => {
+         window.confirm = originalConfirmGlobal;
+       });
+     })();
+  </script>
+  <!-- 发票打印助手 V3.5.8 - 2025年10月 -->
+  <!-- 新增：文件复制功能 + 打印反馈增强 -->
+  
+  
+  <!-- 禁用 Next.js 客户端路由预加载 -->
+  <script>
+    (function() {
+      // 拦截所有链接点击，使用原生导航
+      document.addEventListener('click', function(e) {
+        const link = e.target.closest('a');
+        if (link && link.href && (link.href.includes('index.html') || link.href.includes('main.html'))) {
+          // 允许原生导航，不让Next.js拦截
+          e.stopPropagation();
+        }
+      }, true);
+      
+      // 禁用 Next.js 的预加载功能
+      if (window.__NEXT_DATA__) {
+        delete window.__NEXT_DATA__;
+      }
+      
+      // 拦截 fetch 请求，过滤不必要的 .txt 文件请求
+      const originalFetch = window.fetch;
+      window.fetch = async function(...args) {
+        const url = typeof args[0] === 'string' ? args[0] : args[0]?.url;
+        
+        // 如果是 .txt 文件且包含 _rsc 参数，直接返回空响应（静默处理）
+        if (url && typeof url === 'string' && url.includes('.txt') && url.includes('_rsc=')) {
+          console.log('[优化] 已拦截不必要的RSC请求:', url);
+          return new Response('', { 
+            status: 200,
+            statusText: 'OK',
+            headers: { 'Content-Type': 'text/plain' }
+          });
+        }
+        
+        return originalFetch.apply(this, args);
+      };
+    })();
+  </script>
+  
+  <!-- 联系功能 -->
+  <script>
+    const feedbackBtn = document.getElementById('feedbackBtn');
+    const feedbackPopup = document.getElementById('feedbackPopup');
+    
+    if (feedbackBtn && feedbackPopup) {
+      feedbackBtn.onclick = (e) => {
+        e.stopPropagation();
+        feedbackPopup.classList.toggle('show');
+      };
+      document.onclick = (e) => !feedbackPopup.contains(e.target) && feedbackPopup.classList.remove('show');
+      feedbackPopup.onclick = (e) => e.stopPropagation();
+    }
+  </script>
+  </body>
+</html>
