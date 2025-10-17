@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh">
   <head>
     <meta charset="utf-8" />
@@ -10,173 +10,48 @@
     <!-- ====== V3.5.8 新功能：文件复制 + 打印增强 ====== -->
     <script>
       (function() {
-        console.log('[V3.5.8] 🚀 初始化文件复制和打印增强功能...');
-        console.log('[V3.5.8] 📋 支持一键复制文件，绕过MD5去重');
-        console.log('[V3.5.8] 🖨️ 增强打印反馈体验');
-        
-        // 存储文件数据
         window.__fileDebugCache = new Map();
         let copyCounter = 0;
-        
-        // ========== 拦截 input[type="file"] 的 change 事件 ==========
         document.addEventListener('change', function(e) {
           if (e.target && e.target.tagName === 'INPUT' && e.target.type === 'file') {
             const files = e.target.files;
-            console.log('[复制功能] 📁 检测到文件选择:', files.length, '个文件');
-            
             for (let i = 0; i < files.length; i++) {
-              const file = files[i];
-              console.log(`[复制功能] 📄 文件${i+1}:`, {
-                name: file.name,
-                size: file.size,
-                type: file.type,
-                lastModified: file.lastModified
-              });
-              
-              // 缓存文件
-              window.__fileDebugCache.set(file.name, file);
-              console.log('[复制功能] ✅ 已缓存文件:', file.name);
+              window.__fileDebugCache.set(files[i].name, files[i]);
             }
           }
         }, true);
         
-        // ========== 调试：打印DOM结构 ==========
-        function logDOMStructure() {
-          console.group('[调试工具] 🔍 当前页面DOM结构');
-          
-          // 查找可能的文件列表容器
-          const candidates = [
-            document.querySelector('[class*="upload"]'),
-            document.querySelector('[class*="file"]'),
-            document.querySelector('[class*="list"]'),
-            document.querySelector('[class*="item"]'),
-            document.querySelector('main'),
-            document.querySelector('[role="main"]')
-          ];
-          
-          candidates.forEach((elem, index) => {
-            if (elem) {
-              console.log(`候选容器${index + 1}:`, {
-                element: elem,
-                className: elem.className,
-                innerHTML: elem.innerHTML.substring(0, 200)
-              });
-            }
-          });
-          
-          console.groupEnd();
-        }
-        
-        // ========== 添加复制按钮（只为原始文件添加，严格限定在文件列表中）==========
         function addCopyButtons() {
-          console.log('[复制功能] 🔍 开始添加复制按钮...');
-          
-          // 检查缓存
-          if (window.__fileDebugCache.size === 0) {
-            console.log('[复制功能] ⚠️ 没有缓存的文件');
-            return;
-          }
-          
-          console.log('[复制功能] 📦 缓存文件:', Array.from(window.__fileDebugCache.keys()));
-          
-          // 查找所有包含 .pdf 的按钮容器（最精确的查找）
+          if (window.__fileDebugCache.size === 0) return;
           const allElements = document.body.querySelectorAll('*');
           const processedFiles = new Set();
-          
           allElements.forEach(elem => {
             const text = elem.textContent || '';
-            
-            // 必须包含 .pdf
-            if (!text.toLowerCase().includes('.pdf')) {
-              return;
-            }
-            
-            // 提取文件名
+            if (!text.toLowerCase().includes('.pdf')) return;
             const fileNameMatch = text.match(/([^\s\/\\]+\.pdf)/i);
-            if (!fileNameMatch) {
-              return;
-            }
-            
+            if (!fileNameMatch) return;
             const fileName = fileNameMatch[1];
-            
-            // 每个文件只处理一次
-            if (processedFiles.has(fileName)) {
-              return;
-            }
-            
-            // 如果是复制的文件，不添加复制按钮
-            if (fileName.includes('_副本')) {
-              console.log(`[调试工具] ⏭️ 跳过副本文件: ${fileName}`);
-              return;
-            }
-            
-            // 必须在缓存中
-            if (!window.__fileDebugCache.has(fileName)) {
-              return;
-            }
-            
-            // 必须包含按钮（说明是操作区域）
+            if (processedFiles.has(fileName)) return;
+            if (fileName.includes('_副本')) return;
+            if (!window.__fileDebugCache.has(fileName)) return;
             const buttons = elem.querySelectorAll('button');
-            if (buttons.length === 0) {
-              return;
-            }
-            
-            // ===== 过滤设置区域：通过文本长度判断 =====
-            // 设置区域的文本通常很长（包含多个选项）
-            // 文件列表项的文本相对较短
-            if (text.length > 500) {
-              console.log(`[调试工具] ⏭️ 跳过长文本区域（可能是设置面板）`);
-              return;
-            }
-            
-            // 如果文本包含"清单位置"且同时包含多个单选按钮，跳过
+            if (buttons.length === 0) return;
+            if (text.length > 500) return;
             const hasRadioGroup = text.includes('清单放最后') || text.includes('原地输出') || text.includes('抽丢清单');
-            if (hasRadioGroup) {
-              console.log(`[调试工具] ⏭️ 跳过设置区域（包含单选组）`);
-              return;
-            }
-            
-            // 避免重复添加
-            if (elem.querySelector('.my-copy-btn')) {
-              return;
-            }
-            
-            console.log(`[调试工具] ✅ 找到原始文件: ${fileName}`);
-            console.log(`[调试工具] 📊 元素信息:`, {
-              文本长度: text.length,
-              按钮数量: buttons.length,
-              文本预览: text.substring(0, 100)
-            });
-            
-            // 查找勾选按钮（绿色勾号）或删除按钮
-            let checkButton = null;
+            if (hasRadioGroup) return;
+            if (elem.querySelector('.my-copy-btn')) return;
             let targetButton = null;
-            
-            buttons.forEach((btn, idx) => {
+            buttons.forEach((btn) => {
               const btnText = btn.textContent?.trim() || '';
               const btnClass = btn.className || '';
               const btnHTML = btn.innerHTML || '';
-              
-              console.log(`  按钮${idx + 1}: text="${btnText}" class="${btnClass.substring(0, 30)}"`);
-              
-              // 查找勾选按钮的特征
-              if (btnClass.includes('success') || 
-                  btnClass.includes('check') || 
-                  btnHTML.includes('✓') ||
-                  btnHTML.includes('check') ||
-                  btn.querySelector('[class*="check"]') ||
-                  btn.querySelector('[class*="success"]')) {
-                checkButton = btn;
+              if (btnClass.includes('success') || btnClass.includes('check') || 
+                  btnHTML.includes('✓') || btnHTML.includes('check') ||
+                  btn.querySelector('[class*="check"]') || btn.querySelector('[class*="success"]')) {
                 targetButton = btn;
-                console.log(`    → 这是勾选按钮`);
               }
-              
-              // 查找删除按钮
-              if (btnHTML.includes('×') || btnHTML.includes('close') || btnText === 'X' || btnText === '×') {
-                if (!targetButton) {
-                  targetButton = btn;
-                }
-                console.log(`    → 这是删除按钮`);
+              if ((btnHTML.includes('×') || btnHTML.includes('close') || btnText === 'X' || btnText === '×') && !targetButton) {
+                targetButton = btn;
               }
             });
             
@@ -185,8 +60,6 @@
             copyBtn.className = 'my-copy-btn';
             copyBtn.textContent = '复制';
             copyBtn.title = `复制 ${fileName}`;
-            
-            // 蓝色背景 + 白色文字
             copyBtn.style.cssText = `
               display: inline-flex !important;
               align-items: center !important;
@@ -203,132 +76,69 @@
               white-space: nowrap !important;
               transition: background 0.2s !important;
             `;
-            
-            // 悬停效果
             copyBtn.addEventListener('mouseenter', () => {
               copyBtn.style.background = '#1d4ed8 !important';
             });
             copyBtn.addEventListener('mouseleave', () => {
               copyBtn.style.background = '#2563eb !important';
             });
-            
-            // 点击事件
             copyBtn.addEventListener('click', (e) => {
               e.preventDefault();
               e.stopPropagation();
-              console.log('[复制功能] 🖱️ 点击复制按钮:', fileName);
               copyFile(fileName);
             });
-            
-            // 插入位置：目标按钮之前
             if (targetButton) {
               try {
                 targetButton.parentElement.insertBefore(copyBtn, targetButton);
-                console.log('[复制功能] ✅ 已插入到目标按钮之前');
                 processedFiles.add(fileName);
               } catch (e) {
-                console.log('[复制功能] ❌ 插入失败:', e.message);
-                // 备用：插入到第一个按钮后面
                 try {
                   buttons[0].parentElement.insertBefore(copyBtn, buttons[0].nextSibling);
-                  console.log('[复制功能] ✅ 已插入到第一个按钮后面（备用方案）');
                   processedFiles.add(fileName);
-                } catch (e2) {
-                  console.log('[复制功能] ❌ 备用方案也失败:', e2.message);
-                }
+                } catch (e2) {}
               }
             } else {
-              // 如果都找不到，尝试插入到最后一个按钮前面
               try {
                 const lastBtn = buttons[buttons.length - 1];
                 lastBtn.parentElement.insertBefore(copyBtn, lastBtn);
-                console.log('[复制功能] ✅ 已插入到最后一个按钮前面（保底方案）');
                 processedFiles.add(fileName);
-              } catch (e) {
-                console.log('[复制功能] ❌ 所有方案都失败:', e.message);
-              }
+              } catch (e) {}
             }
           });
-          
-          console.log(`[调试工具] 🎉 添加完成，共为 ${processedFiles.size} 个原始文件添加复制按钮`);
         }
         
-        // ========== 复制文件（修改内容改变MD5）==========
         async function copyFile(fileName) {
-          console.log('[复制功能] 📋 开始复制文件:', fileName);
-          console.log('[复制功能] 📦 当前缓存:', Array.from(window.__fileDebugCache.keys()));
-          
           const file = window.__fileDebugCache.get(fileName);
-          
           if (!file) {
-            console.error('[复制功能] ❌ 未找到文件数据:', fileName);
             alert(`❌ 无法复制文件: ${fileName}\n文件未在缓存中，请刷新页面后重新上传`);
             return;
           }
-          
           copyCounter++;
           const newFileName = fileName.replace('.pdf', `_副本${copyCounter}.pdf`);
-          
           try {
-            console.log('[复制功能] 🔄 读取文件内容...');
-            
-            // 读取原文件内容
             const arrayBuffer = await file.arrayBuffer();
             const originalBytes = new Uint8Array(arrayBuffer);
-            
-            console.log('[复制功能] 📄 原文件大小:', originalBytes.length, '字节');
-            
-            // 创建随机标识（改变MD5）
             const timestamp = Date.now();
             const randomId = Math.random().toString(36).substring(2, 15);
             const comment = `\n%%PDF-COPY-${timestamp}-${randomId}-END%%\n`;
             const commentBytes = new TextEncoder().encode(comment);
-            
-            // 合并原始文件和注释
             const newBytes = new Uint8Array(originalBytes.length + commentBytes.length);
             newBytes.set(originalBytes, 0);
             newBytes.set(commentBytes, originalBytes.length);
-            
-            console.log('[复制功能] ✅ 新文件大小:', newBytes.length, '字节 (+', commentBytes.length, ')');
-            console.log('[复制功能] 🔐 添加的标识:', comment.trim());
-            
-            // 创建新文件
             const copiedFile = new File([newBytes], newFileName, {
               type: file.type,
               lastModified: Date.now()
             });
-            
-            console.log('[复制功能] 🎉 创建文件副本:', newFileName);
-            
-            // 查找文件输入框
             const fileInput = document.querySelector('input[type="file"]');
             if (!fileInput) {
-              console.error('[复制功能] ❌ 未找到文件输入框');
               alert('❌ 未找到文件输入框');
               return;
             }
-            
-            // 创建 DataTransfer
             const dataTransfer = new DataTransfer();
             dataTransfer.items.add(copiedFile);
-            
-            // 设置文件
             fileInput.files = dataTransfer.files;
-            
-            // 触发 change 事件
             const event = new Event('change', { bubbles: true });
             fileInput.dispatchEvent(event);
-            
-            console.log('[复制功能] ✅ 已触发文件上传');
-            console.log('[复制功能] 📊 文件信息:', {
-              原文件: fileName,
-              副本: newFileName,
-              原大小: originalBytes.length,
-              新大小: newBytes.length,
-              增加: commentBytes.length
-            });
-            
-            // 不使用alert，改用更友好的提示
             const notification = document.createElement('div');
             notification.textContent = `✅ 已复制: ${fileName}`;
             notification.style.cssText = `
@@ -346,84 +156,40 @@
             `;
             document.body.appendChild(notification);
             setTimeout(() => notification.remove(), 3000);
-            
           } catch (e) {
-            console.error('[复制功能] ❌ 复制失败:', e);
             alert(`❌ 复制失败: ${e.message}`);
           }
         }
         
-        // ========== 添加动画样式 ==========
         const style = document.createElement('style');
         style.textContent = `
           @keyframes slideIn {
-            from {
-              transform: translateX(400px);
-              opacity: 0;
-            }
-            to {
-              transform: translateX(0);
-              opacity: 1;
-            }
+            from { transform: translateX(400px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
           }
         `;
         document.head.appendChild(style);
-        
-        // ========== 初始化 ==========
-        setTimeout(() => {
-          logDOMStructure();
-          addCopyButtons();
-        }, 2000);
-        
-        // 定期检查并添加按钮
+        setTimeout(() => addCopyButtons(), 2000);
         setInterval(addCopyButtons, 2000);
-        
-        // 监听 DOM 变化
         const observer = new MutationObserver(() => {
           setTimeout(addCopyButtons, 500);
         });
+        observer.observe(document.body, { childList: true, subtree: true });
         
-        observer.observe(document.body, {
-          childList: true,
-          subtree: true
-        });
-        
-        console.log('[复制功能] 🎉 初始化完成！');
-        console.log('[复制功能] 💡 请上传文件，然后查看控制台输出');
-        console.log('[复制功能] 🔐 现在会修改文件内容以改变MD5值');
-        
-        // ========== 添加打印功能增强 ==========
-        console.log('[打印增强] 🖨️ 初始化打印功能增强...');
-        
-        // 监听所有按钮点击
         document.addEventListener('click', function(e) {
-          const target = e.target;
-          const button = target.closest('button');
-          
+          const button = e.target.closest('button');
           if (!button) return;
-          
           const text = button.textContent || button.innerText || '';
-          
-          // 检测打印相关按钮
           if (text.includes('打印') || text.includes('Print') || 
               text.includes('下载') || text.includes('Download') ||
               text.includes('合并')) {
-            
-            console.log('[打印增强] 🖱️ 检测到操作按钮点击:', text);
-            
-            // 显示处理中提示
             showProcessingNotification(text);
-            
-            // 如果是打印按钮，添加额外处理
             if (text.includes('打印') || text.includes('Print')) {
-              setTimeout(() => {
-                tryTriggerPrint();
-              }, 1000);
+              setTimeout(() => tryTriggerPrint(), 1000);
             }
           }
         }, true);
         
-        // 显示处理中通知
         function showProcessingNotification(action) {
           const notification = document.createElement('div');
           notification.id = 'processing-notification';
@@ -468,18 +234,9 @@
             `;
             document.head.appendChild(spinnerStyle);
           }
-          
-          // 移除旧通知
           const oldNotification = document.getElementById('processing-notification');
-          if (oldNotification) {
-            oldNotification.remove();
-          }
-          
+          if (oldNotification) oldNotification.remove();
           document.body.appendChild(notification);
-          
-          console.log('[打印增强] 📢 显示处理通知:', action);
-          
-          // 5秒后自动移除
           setTimeout(() => {
             if (notification.parentElement) {
               notification.style.animation = 'slideOut 0.3s';
@@ -488,63 +245,26 @@
           }, 5000);
         }
         
-        // 尝试触发打印
         function tryTriggerPrint() {
-          console.log('[打印增强] 🔍 查找PDF预览...');
-          
-          // 方法1: 查找iframe中的PDF
           const iframes = document.querySelectorAll('iframe');
-          iframes.forEach((iframe, index) => {
+          iframes.forEach((iframe) => {
             try {
               const src = iframe.src || '';
               if (src.includes('blob:') || src.includes('.pdf')) {
-                console.log(`[打印增强] 📄 找到PDF iframe ${index + 1}:`, src.substring(0, 50));
-                
-                // 尝试触发打印
                 setTimeout(() => {
                   try {
                     iframe.contentWindow.print();
-                    console.log('[打印增强] ✅ 已触发iframe打印');
                     showSuccessNotification('✅ 已打开打印对话框');
-                  } catch (e) {
-                    console.log('[打印增强] ⚠️ iframe打印失败:', e.message);
-                  }
+                  } catch (e) {}
                 }, 500);
               }
-            } catch (e) {
-              console.log(`[打印增强] ⚠️ 检查iframe ${index + 1}失败:`, e.message);
-            }
+            } catch (e) {}
           });
-          
-          // 方法2: 查找embed元素
-          const embeds = document.querySelectorAll('embed[type="application/pdf"]');
-          if (embeds.length > 0) {
-            console.log('[打印增强] 📄 找到PDF embed元素:', embeds.length, '个');
-          }
-          
-          // 方法3: 查找object元素
-          const objects = document.querySelectorAll('object[type="application/pdf"]');
-          if (objects.length > 0) {
-            console.log('[打印增强] 📄 找到PDF object元素:', objects.length, '个');
-          }
-          
-          // 方法4: 检查是否有下载链接
-          const links = document.querySelectorAll('a[href*="blob:"], a[href*=".pdf"]');
-          if (links.length > 0) {
-            console.log('[打印增强] 🔗 找到PDF下载链接:', links.length, '个');
-            links.forEach((link, index) => {
-              console.log(`  链接${index + 1}:`, link.href.substring(0, 50));
-            });
-          }
         }
         
-        // 显示成功通知
         function showSuccessNotification(message) {
           const oldNotification = document.getElementById('processing-notification');
-          if (oldNotification) {
-            oldNotification.remove();
-          }
-          
+          if (oldNotification) oldNotification.remove();
           const notification = document.createElement('div');
           notification.textContent = message;
           notification.style.cssText = `
@@ -562,48 +282,22 @@
             animation: slideIn 0.3s;
           `;
           document.body.appendChild(notification);
-          
           setTimeout(() => {
             notification.style.animation = 'slideOut 0.3s';
             setTimeout(() => notification.remove(), 300);
           }, 3000);
         }
         
-        // 监听PDF加载完成
-        window.addEventListener('load', () => {
-          console.log('[打印增强] 📄 页面加载完成，检查PDF元素...');
-          
-          setTimeout(() => {
-            const iframes = document.querySelectorAll('iframe');
-            const embeds = document.querySelectorAll('embed');
-            const objects = document.querySelectorAll('object');
-            
-            console.log('[打印增强] 📊 当前页面元素统计:');
-            console.log('  - iframe:', iframes.length, '个');
-            console.log('  - embed:', embeds.length, '个');
-            console.log('  - object:', objects.length, '个');
-          }, 2000);
-        });
-        
-        // 添加slideOut动画
+        // slideOut动画
         const styleSheet = document.querySelector('style');
         if (styleSheet && !styleSheet.textContent.includes('slideOut')) {
           styleSheet.textContent += `
             @keyframes slideOut {
-              from {
-                transform: translateX(0);
-                opacity: 1;
-              }
-              to {
-                transform: translateX(400px);
-                opacity: 0;
-              }
+              from { transform: translateX(0); opacity: 1; }
+              to { transform: translateX(400px); opacity: 0; }
             }
           `;
         }
-        
-        console.log('[打印增强] ✅ 打印功能增强已启用');
-        
       })();
     </script>
     <link
@@ -1408,31 +1102,6 @@
         role="main"
         class="max-w-7xl w-full mx-auto p-4 flex flex-col flex-1"
       >
-        <div class="sr-only">
-          <h1>发票打印助手 - PDF电子发票批量处理工具</h1>
-          <p>
-            专业的PDF电子发票处理平台，专门处理PDF格式电子发票文件的批量上传、智能合并、自动统计、一键打印和数据导出功能。适用于企业财务人员、会计师、出纳员进行电子发票管理和数字化报销流程优化。
-          </p>
-          <h2>主要功能特色</h2>
-          <ul>
-            <li>PDF电子发票批量上传 - 支持拖拽上传多个PDF格式电子发票文件</li>
-            <li>智能电子发票识别 - 自动提取PDF发票代码、号码、金额信息</li>
-            <li>电子发票合并打印 - 多张PDF发票合并为A4双联格式，节省纸张</li>
-            <li>PDF实时预览功能 - 电子发票文件在线预览，支持缩放和打印</li>
-            <li>
-              电子发票统计数据导出 - PDF发票信息生成CSV文件，便于Excel管理
-            </li>
-            <li>一键打印服务 - 批量打印合并后的PDF电子发票文件</li>
-          </ul>
-          <h2>适用场景和用户</h2>
-          <p>
-            企业电子发票月度报销、季度数字化财务整理、年终电子账务处理、税务申报准备。适用于处理PDF电子发票的中小企业财务部门、会计师事务所、代理记账公司、个体工商户等。
-          </p>
-          <h2>技术支持</h2>
-          <p>
-            专门支持PDF格式的增值税专用发票、普通发票、机动车发票等各类电子发票。专注于PDF文件批量导入处理，提供电子发票信息自动识别和数据提取功能。
-          </p>
-        </div>
         <div class="flex-1"></div>
         <section
           aria-label="发票处理工作区"
@@ -1532,12 +1201,6 @@
                       或点击选择文件（支持多选）
                     </p>
                   </div>
-                  <div class="sr-only">
-                    <h3>PDF电子发票文件上传功能</h3>
-                    <p>
-                      专门支持批量上传PDF格式的电子发票文件，包括增值税专用发票、普通发票等各类电子发票。可通过拖拽或点击选择的方式上传多个PDF文件，系统会自动识别和处理电子发票信息，不支持纸质发票处理。
-                    </p>
-                  </div>
                 </div>
               </div>
             </div>
@@ -1545,31 +1208,6 @@
         </section>
         <div class="flex-1"></div>
         <section class="mt-8" aria-label="产品功能特色介绍">
-          <div class="sr-only">
-            <h2>发票打印助手核心功能优势</h2>
-            <p>
-              发票打印助手提供全面的电子发票处理解决方案，帮助企业财务人员提升工作效率，简化报销流程，实现发票管理的数字化转型。
-            </p>
-            <h3>功能详细说明</h3>
-            <dl>
-              <dt>一键打印功能</dt>
-              <dd>
-                支持批量打印合并后的PDF发票文件，无需逐张处理，大幅提升打印效率。适用于财务报销、税务申报等场景。
-              </dd>
-              <dt>智能合并技术</dt>
-              <dd>
-                采用先进的PDF处理算法，自动将多张发票合并为A4双联格式，最大化利用纸张空间，节省50%的打印成本。
-              </dd>
-              <dt>数据导出服务</dt>
-              <dd>
-                自动提取发票关键信息包括发票代码、号码、金额等，生成标准CSV格式文件，便于导入Excel进行财务管理。
-              </dd>
-              <dt>批量处理能力</dt>
-              <dd>
-                支持同时上传处理多个PDF发票文件，提供拖拽上传和多选上传方式，大幅提升文件处理效率。
-              </dd>
-            </dl>
-          </div>
           <div
             class="w-full max-w-5xl mx-auto py-6 px-4 flex flex-col md:flex-row justify-around items-start gap-6 bg-white rounded-xl shadow-sm border"
           >
@@ -1599,9 +1237,6 @@
               <p class="text-sm text-gray-500">
                 多张发票一键打印，无需单张繁琐提交
               </p>
-              <span class="sr-only"
-                >PDF电子发票批量打印功能，支持PDF格式电子发票文件直接打印，提升数字化财务工作效率</span
-              >
             </article>
             <article class="flex flex-col max-w-xs">
               <div class="flex items-center gap-2 mb-2">
@@ -1625,9 +1260,6 @@
                 <h3 class="text-lg font-semibold text-gray-800">智能合并</h3>
               </div>
               <p class="text-sm text-gray-500">自动合并为A4双联，节省50%纸张</p>
-              <span class="sr-only"
-                >PDF电子发票智能合并技术，A4双联格式，节省打印成本，环保高效的数字化处理</span
-              >
             </article>
             <article class="flex flex-col max-w-xs">
               <div class="flex items-center gap-2 mb-2">
@@ -1658,9 +1290,6 @@
               <p class="text-sm text-gray-500">
                 发票信息生成CSV，便于Excel管理
               </p>
-              <span class="sr-only"
-                >PDF电子发票数据自动提取导出，CSV格式兼容Excel，便于数字化财务数据管理</span
-              >
             </article>
             <article class="flex flex-col max-w-xs">
               <div class="flex items-center gap-2 mb-2">
@@ -1686,9 +1315,6 @@
                 <h3 class="text-lg font-semibold text-gray-800">批量处理</h3>
               </div>
               <p class="text-sm text-gray-500">拖拽或多选文件，一键批量上传</p>
-              <span class="sr-only"
-                >支持批量上传PDF格式电子发票文件，拖拽操作，多个电子发票文件同时处理</span
-              >
             </article>
             <article class="flex flex-col max-w-xs">
               <div class="flex items-center gap-2 mb-2">
@@ -1711,24 +1337,7 @@
                 <h3 class="text-lg font-semibold text-gray-800">一键复制</h3>
               </div>
               <p class="text-sm text-gray-500">复制文件并直接打印，绕过MD5去重限制</p>
-              <span class="sr-only"
-                >智能文件复制功能，自动修改文件内容改变MD5值，支持重复文件处理和批量打印</span
-              >
             </article>
-          </div>
-          <div class="sr-only">
-            <h2>使用教程和技术支持</h2>
-            <p>
-              发票打印助手操作简单，仅需三步即可完成PDF电子发票处理：上传PDF格式电子发票文件、自动识别处理、下载合并结果。支持Windows、Mac、移动端等多平台使用，专门处理电子发票。
-            </p>
-            <h2>适用行业和企业规模</h2>
-            <p>
-              适用于需要处理PDF电子发票的各类企业财务部门，包括中小企业、创业公司、代理记账公司、会计师事务所等。特别适合有大量电子发票处理需求的数字化企业用户。
-            </p>
-            <h2>安全保障和隐私保护</h2>
-            <p>
-              采用企业级安全标准，确保PDF电子发票数据安全。所有电子发票文件处理均在云端完成，不保存用户敏感信息，保护企业电子发票数据隐私。
-            </p>
           </div>
         </section>
       </main>
@@ -1748,8 +1357,8 @@
           <div class="feedback-body">
             <div class="feedback-qr">
               <img src="static/picture/qywxkf.png" alt="工程师微信二维码" width="128" height="128">
-              <p class="feedback-title">扫码添加工程师微信</p>
-              <p class="feedback-desc">深度交流技术问题，获得专业支持</p>
+              <p class="feedback-title">扫码添加微信</p>
+              <p class="feedback-desc">使用功能添加、bug反馈，双向交流无阻碍</p>
             </div>
           </div>
         </div>
@@ -1822,12 +1431,7 @@
   <script>
     (function() {
       function createGithubElements() {
-        // 检查是否已存在，避免重复添加
-        if (document.getElementById('github-float-custom')) {
-          return;
-        }
-        
-        // 创建左下角浮动按钮
+        if (document.getElementById('github-float-custom')) return;
         const floatBtn = document.createElement('a');
         floatBtn.id = 'github-float-custom';
         floatBtn.href = 'https://github.com/Tom-wc/fpzs';
@@ -1837,25 +1441,14 @@
         floatBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg><span>⭐ Star on GitHub</span>';
         floatBtn.onmouseover = function() { this.style.background='#1a1e22'; this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 16px rgba(0,0,0,0.2)'; };
         floatBtn.onmouseout = function() { this.style.background='#24292e'; this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.15)'; };
-        
-        // 插入到body
         document.body.appendChild(floatBtn);
       }
-      
-      // 页面加载后插入
       if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', createGithubElements);
       } else {
         createGithubElements();
       }
-      
-      // 延迟执行确保在所有脚本后
-      setTimeout(createGithubElements, 500);
-      setTimeout(createGithubElements, 1500);
-      setTimeout(createGithubElements, 3000);
-      
-      // 定期检查并重新插入（如果被删除）
-      setInterval(createGithubElements, 2000);
+      setTimeout(createGithubElements, 1000);
     })();
   </script>
   <script>
@@ -1900,7 +1493,6 @@
           return originalCreateObjectURL.apply(URL, arguments);
         }
       };
-      // ====== 监控 PDF 响应 ======
       const originalFetch = window.fetch;
       window.fetch = async function () {
         const res = await originalFetch.apply(this, arguments);
@@ -1910,7 +1502,6 @@
             const blob = await res.clone().blob();
             const pdfUrl = URL.createObjectURL(blob);
             setLastPdfUrl(pdfUrl);
-            console.log('[PDF] PDF已生成:', pdfUrl.substring(0, 50) + '...');
           }
         } catch (e) {}
         return res;
@@ -1983,45 +1574,28 @@
           
           // 处理下载按钮 - 自动确认
           if (btn && textIncludes(btn, downloadKeywords)) {
-            console.log('[下载] 检测到下载按钮点击');
-            // 不阻止事件，让下载正常进行
             return;
           }
           
           // 处理打印按钮
           if (btn && textIncludes(btn, printKeywords)) {
-            console.log('[打印] 🖨️ 检测到打印按钮点击');
             ev.preventDefault();
             ev.stopPropagation();
             try {
-              console.log('[打印] 正在查找PDF...');
-              // 等待合并 PDF 生成（最多 8 秒，每 400ms 轮询一次）
               const deadline = Date.now() + 8000;
               let url = lastPdfUrl;
-              let attempts = 0;
               while (!url && Date.now() < deadline) {
                 scanForPdfLinks();
                 url = lastPdfUrl;
-                if (url) {
-                  console.log('[打印] ✅ 找到PDF:', url.substring(0, 50) + '...');
-                  break;
-                }
-                attempts++;
-                if (attempts % 5 === 0) {
-                  console.log('[打印] ⏳ 等待PDF生成... 尝试次数:', attempts);
-                }
+                if (url) break;
                 await new Promise((r) => setTimeout(r, 400));
               }
               if (url) {
-                console.log('[打印] 🖨️ 开始打印PDF');
                 await printPdf(url);
               } else {
-                console.log('[打印] ⚠️ 未找到PDF，使用window.print()');
                 window.print();
               }
-            } catch (e) {
-              console.error('[打印] ❌ 打印失败:', e);
-            }
+            } catch (e) {}
           }
         },
         true
@@ -2050,52 +1624,34 @@
        });
      })();
   </script>
-  <!-- 发票打印助手 V3.5.8 - 2025年10月 -->
-  <!-- 新增：文件复制功能 + 打印反馈增强 -->
-  
-  
-  <!-- 禁用 Next.js 客户端路由预加载 -->
+  <!-- 发票打印助手 V3.5.8 | 新增：文件复制功能 + 打印反馈增强 | 禁用Next.js路由预加载 -->
   <script>
     (function() {
-      // 拦截所有链接点击，使用原生导航
       document.addEventListener('click', function(e) {
         const link = e.target.closest('a');
         if (link && link.href && (link.href.includes('index.html') || link.href.includes('main.html'))) {
-          // 允许原生导航，不让Next.js拦截
           e.stopPropagation();
         }
       }, true);
-      
-      // 禁用 Next.js 的预加载功能
-      if (window.__NEXT_DATA__) {
-        delete window.__NEXT_DATA__;
-      }
-      
-      // 拦截 fetch 请求，过滤不必要的 .txt 文件请求
+      if (window.__NEXT_DATA__) delete window.__NEXT_DATA__;
       const originalFetch = window.fetch;
       window.fetch = async function(...args) {
         const url = typeof args[0] === 'string' ? args[0] : args[0]?.url;
-        
-        // 如果是 .txt 文件且包含 _rsc 参数，直接返回空响应（静默处理）
         if (url && typeof url === 'string' && url.includes('.txt') && url.includes('_rsc=')) {
-          console.log('[优化] 已拦截不必要的RSC请求:', url);
           return new Response('', { 
             status: 200,
             statusText: 'OK',
             headers: { 'Content-Type': 'text/plain' }
           });
         }
-        
         return originalFetch.apply(this, args);
       };
     })();
   </script>
-  
   <!-- 联系功能 -->
   <script>
     const feedbackBtn = document.getElementById('feedbackBtn');
     const feedbackPopup = document.getElementById('feedbackPopup');
-    
     if (feedbackBtn && feedbackPopup) {
       feedbackBtn.onclick = (e) => {
         e.stopPropagation();
