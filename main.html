@@ -12,6 +12,7 @@
       (function() {
         window.__fileDebugCache = new Map();
         let copyCounter = 0;
+        
         document.addEventListener('change', function(e) {
           if (e.target && e.target.tagName === 'INPUT' && e.target.type === 'file') {
             const files = e.target.files;
@@ -23,9 +24,24 @@
         
         function addCopyButtons() {
           if (window.__fileDebugCache.size === 0) return;
-          const allElements = document.body.querySelectorAll('*');
+          
+          // 优化：优先查询可能包含文件列表的区域
+          let targetElements = null;
+          const fileAreas = document.querySelectorAll('[role="complementary"], aside, [class*="file"], [class*="upload"], main');
+          
+          if (fileAreas.length > 0) {
+            // 只在文件相关区域查询
+            targetElements = [];
+            fileAreas.forEach(area => {
+              targetElements.push(...area.querySelectorAll('*'));
+            });
+          } else {
+            // 降级：如果没找到特定区域，查询整个body
+            targetElements = document.body.querySelectorAll('*');
+          }
+          
           const processedFiles = new Set();
-          allElements.forEach(elem => {
+          targetElements.forEach(elem => {
             const text = elem.textContent || '';
             if (!text.toLowerCase().includes('.pdf')) return;
             const fileNameMatch = text.match(/([^\s\/\\]+\.pdf)/i);
@@ -109,10 +125,7 @@
         
         async function copyFile(fileName) {
           const file = window.__fileDebugCache.get(fileName);
-          if (!file) {
-            alert(`❌ 无法复制文件: ${fileName}\n文件未在缓存中，请刷新页面后重新上传`);
-            return;
-          }
+          if (!file) return;
           copyCounter++;
           const newFileName = fileName.replace('.pdf', `_副本${copyCounter}.pdf`);
           try {
@@ -130,10 +143,7 @@
               lastModified: Date.now()
             });
             const fileInput = document.querySelector('input[type="file"]');
-            if (!fileInput) {
-              alert('❌ 未找到文件输入框');
-              return;
-            }
+            if (!fileInput) return;
             const dataTransfer = new DataTransfer();
             dataTransfer.items.add(copiedFile);
             fileInput.files = dataTransfer.files;
@@ -169,12 +179,49 @@
           }
         `;
         document.head.appendChild(style);
-        setTimeout(() => addCopyButtons(), 2000);
-        setInterval(addCopyButtons, 2000);
-        const observer = new MutationObserver(() => {
-          setTimeout(addCopyButtons, 500);
-        });
-        observer.observe(document.body, { childList: true, subtree: true });
+        
+        // 优化：延迟到DOM完全加载后再初始化复制按钮功能
+        function initCopyButtonFeature() {
+          // 首次执行
+          addCopyButtons();
+          
+          // 优化：使用requestIdleCallback在浏览器空闲时执行
+          // 如果不支持requestIdleCallback，降级为setInterval
+          if (window.requestIdleCallback) {
+            function scheduleCheck() {
+              requestIdleCallback(() => {
+                addCopyButtons();
+                setTimeout(scheduleCheck, 2000); // 2秒后再次安排
+              }, { timeout: 3000 }); // 最多等待3秒
+            }
+            scheduleCheck();
+          } else {
+            // 降级方案：不支持requestIdleCallback的浏览器
+            setInterval(addCopyButtons, 2000);
+          }
+          
+          // DOM变化监控（保持原有功能）
+          let observerTimer = null;
+          const observer = new MutationObserver(() => {
+            // 节流：避免频繁触发
+            if (observerTimer) return;
+            observerTimer = setTimeout(() => {
+              addCopyButtons();
+              observerTimer = null;
+            }, 500);
+          });
+          observer.observe(document.body, { childList: true, subtree: true });
+        }
+        
+        // 如果DOM已加载，立即初始化；否则等待DOMContentLoaded
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(initCopyButtonFeature, 1000);
+          });
+        } else {
+          // 已经加载完成，延迟1秒执行
+          setTimeout(initCopyButtonFeature, 1000);
+        }
         
         document.addEventListener('click', function(e) {
           const button = e.target.closest('button');
@@ -189,6 +236,23 @@
             }
           }
         }, true);
+        
+        function tryTriggerPrint() {
+          const iframes = document.querySelectorAll('iframe');
+          iframes.forEach(iframe => {
+            try {
+              const src = iframe.src || '';
+              if (src.includes('.pdf') || src.startsWith('blob:')) {
+                setTimeout(() => {
+                  try {
+                    iframe.contentWindow.print();
+                    showSuccessNotification('✅ 已打开打印对话框');
+                  } catch (e) {}
+                }, 500);
+              }
+            } catch (e) {}
+          });
+        }
         
         function showProcessingNotification(action) {
           const notification = document.createElement('div');
@@ -234,32 +298,10 @@
             `;
             document.head.appendChild(spinnerStyle);
           }
+          
           const oldNotification = document.getElementById('processing-notification');
           if (oldNotification) oldNotification.remove();
           document.body.appendChild(notification);
-          setTimeout(() => {
-            if (notification.parentElement) {
-              notification.style.animation = 'slideOut 0.3s';
-              setTimeout(() => notification.remove(), 300);
-            }
-          }, 5000);
-        }
-        
-        function tryTriggerPrint() {
-          const iframes = document.querySelectorAll('iframe');
-          iframes.forEach((iframe) => {
-            try {
-              const src = iframe.src || '';
-              if (src.includes('blob:') || src.includes('.pdf')) {
-                setTimeout(() => {
-                  try {
-                    iframe.contentWindow.print();
-                    showSuccessNotification('✅ 已打开打印对话框');
-                  } catch (e) {}
-                }, 500);
-              }
-            } catch (e) {}
-          });
         }
         
         function showSuccessNotification(message) {
@@ -271,33 +313,19 @@
             position: fixed;
             top: 20px;
             right: 20px;
-            padding: 16px 24px;
+            padding: 12px 20px;
             background: #10b981;
             color: white;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
             z-index: 99999;
-            font-size: 15px;
-            font-weight: 500;
+            font-size: 14px;
             animation: slideIn 0.3s;
           `;
           document.body.appendChild(notification);
-          setTimeout(() => {
-            notification.style.animation = 'slideOut 0.3s';
-            setTimeout(() => notification.remove(), 300);
-          }, 3000);
+          setTimeout(() => notification.remove(), 3000);
         }
         
-        // slideOut动画
-        const styleSheet = document.querySelector('style');
-        if (styleSheet && !styleSheet.textContent.includes('slideOut')) {
-          styleSheet.textContent += `
-            @keyframes slideOut {
-              from { transform: translateX(0); opacity: 1; }
-              to { transform: translateX(400px); opacity: 0; }
-            }
-          `;
-        }
       })();
     </script>
     <link
