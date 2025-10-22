@@ -128,6 +128,141 @@
       }
     }
 
+    /* 简洁的发票主题动画效果 */
+    @keyframes invoice-fall {
+      0% {
+        transform: translateY(-50px) rotate(calc(-8deg + var(--random-rotation, 0deg)));
+        opacity: 0;
+      }
+      15% {
+        opacity: 1;
+      }
+      85% {
+        opacity: 1;
+      }
+      100% {
+        transform: translateY(100vh) rotate(calc(8deg + var(--random-rotation, 0deg)));
+        opacity: 0;
+      }
+    }
+
+    @keyframes invoice-scan {
+      0% {
+        transform: translateX(-100%);
+        opacity: 0;
+      }
+      20% {
+        opacity: 1;
+      }
+      80% {
+        opacity: 1;
+      }
+      100% {
+        transform: translateX(100vw);
+        opacity: 0;
+      }
+    }
+
+    /* 固定动画关键帧 */
+    @keyframes calculator-pulse {
+      0%, 100% {
+        transform: scale(1);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      }
+      50% {
+        transform: scale(1.05);
+        box-shadow: 0 6px 16px rgba(0,0,0,0.3);
+      }
+    }
+
+    @keyframes number-flash {
+      0%, 100% {
+        color: #00ff00;
+        text-shadow: 0 0 5px #00ff00;
+      }
+      50% {
+        color: #ffffff;
+        text-shadow: 0 0 10px #ffffff;
+      }
+    }
+
+    @keyframes stamp-rotate {
+      0% {
+        transform: rotate(0deg);
+      }
+      25% {
+        transform: rotate(-5deg);
+      }
+      75% {
+        transform: rotate(5deg);
+      }
+      100% {
+        transform: rotate(0deg);
+      }
+    }
+
+    @keyframes paper-stack {
+      0%, 100% {
+        transform: translateY(0);
+      }
+      50% {
+        transform: translateY(-3px);
+      }
+    }
+
+    @keyframes printer-work {
+      0%, 100% {
+        transform: translateY(0);
+      }
+      50% {
+        transform: translateY(-2px);
+      }
+    }
+
+    @keyframes paper-output {
+      0% {
+        opacity: 0;
+        transform: translateY(-5px);
+      }
+      50% {
+        opacity: 1;
+        transform: translateY(0);
+      }
+      100% {
+        opacity: 0;
+        transform: translateY(5px);
+      }
+    }
+
+    @keyframes chart-grow {
+      0%, 100% {
+        transform: scale(1);
+      }
+      50% {
+        transform: scale(1.1);
+      }
+    }
+
+    @keyframes bar-pulse {
+      0%, 100% {
+        opacity: 0.7;
+        transform: scaleY(1);
+      }
+      50% {
+        opacity: 1;
+        transform: scaleY(1.1);
+      }
+    }
+
+    @keyframes icon-bounce {
+      0%, 100% {
+        transform: translateY(0) scale(1);
+      }
+      50% {
+        transform: translateY(-5px) scale(1.1);
+      }
+    }
+
     /* Hero Section */
     .hero {
       min-height: 100vh;
@@ -432,6 +567,286 @@
       animation: float 12s ease-in-out infinite;
       animation-delay: 4s;
     }
+
+    /* 简洁的发票主题动画元素 */
+    .invoice-animations {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 1;
+      overflow: hidden;
+      opacity: 0.6;
+    }
+
+    .invoice-paper {
+      position: absolute;
+      width: 70px;
+      height: 90px;
+      background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+      border: 1px solid rgba(0,0,0,0.1);
+      border-radius: 12px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+      animation: invoice-fall 12s linear infinite;
+      --random-rotation: 0deg;
+      /* 初始隐藏，等待JavaScript设置随机位置 */
+      opacity: 0;
+      visibility: hidden;
+    }
+
+    .invoice-paper.initialized {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    .invoice-paper::before {
+      content: '';
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      right: 16px;
+      bottom: 16px;
+      background: 
+        linear-gradient(to bottom, transparent 0%, transparent 25%, rgba(0,0,0,0.05) 25%, rgba(0,0,0,0.05) 30%, transparent 30%, transparent 100%),
+        linear-gradient(to right, transparent 0%, transparent 15%, rgba(0,0,0,0.05) 15%, rgba(0,0,0,0.05) 18%, transparent 18%, transparent 100%);
+      border-radius: 6px;
+    }
+
+    .invoice-paper::after {
+      content: '¥';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 28px;
+      font-weight: 600;
+      color: #28a745;
+      font-family: 'ZCOOL KuHei', sans-serif;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .scan-line-invoice {
+      position: absolute;
+      width: 600px;
+      height: 4px;
+      background: linear-gradient(90deg, transparent, rgba(102, 126, 234, 0.8), transparent);
+      box-shadow: 0 0 16px rgba(102, 126, 234, 0.6);
+      animation: invoice-scan 8s linear infinite;
+      top: 40%;
+      border-radius: 2px;
+    }
+
+    /* 固定位置动画元素 */
+    .fixed-animations-left,
+    .fixed-animations-right {
+      position: absolute; /* 改为absolute，相对于.hero定位 */
+      top: 0;
+      height: 100vh;
+      width: 120px; /* 从80px放大50%到120px */
+      pointer-events: none;
+      z-index: 1;
+      opacity: 0.7;
+    }
+
+    .fixed-animations-left {
+      left: calc(50% - 600px - 180px); /* 1200px内容宽度的一半，再向左偏移180px(1.5个图标大小) */
+      transform: translateX(-50%);
+    }
+
+    .fixed-animations-right {
+      right: calc(50% - 600px - 180px); /* 1200px内容宽度的一半，再向右偏移180px(1.5个图标大小) */
+      transform: translateX(50%);
+    }
+
+    /* 左侧固定动画样式 */
+    .fixed-calculator {
+      position: absolute;
+      top: 15%;
+      left: 20px;
+      width: 120px; /* 从80px放大50%到120px */
+      height: 150px; /* 从100px放大50%到150px */
+      background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+      border-radius: 12px; /* 从8px放大50%到12px */
+      box-shadow: 0 6px 18px rgba(0,0,0,0.2); /* 从4px 12px放大50% */
+      animation: calculator-pulse 3s ease-in-out infinite;
+    }
+
+    .calc-screen {
+      width: 105px; /* 从70px放大50%到105px */
+      height: 38px; /* 从25px放大50%到38px */
+      background: #1a252f;
+      margin: 12px auto; /* 从8px放大50%到12px */
+      border-radius: 6px; /* 从4px放大50%到6px */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid #34495e;
+    }
+
+    .calc-number {
+      font-size: 15px; /* 从10px放大50%到15px */
+      color: #00ff00;
+      font-family: 'Courier New', monospace;
+      font-weight: bold;
+      animation: number-flash 2s ease-in-out infinite;
+    }
+
+    .calc-buttons {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px; /* 从4px放大50%到6px */
+      padding: 12px; /* 从8px放大50%到12px */
+    }
+
+    .calc-btn {
+      width: 30px; /* 从20px放大50%到30px */
+      height: 30px; /* 从20px放大50%到30px */
+      background: #34495e;
+      border-radius: 5px; /* 从3px放大50%到5px */
+      box-shadow: inset 0 1px 2px rgba(0,0,0,0.3);
+    }
+
+    .fixed-stamp {
+      position: absolute;
+      top: calc(40% + 45px); /* 向下移动半个圆的位置(45px) */
+      left: 20px;
+      width: 90px; /* 从60px放大50%到90px */
+      height: 90px; /* 从60px放大50%到90px */
+      background: radial-gradient(circle, #e74c3c 0%, #c0392b 100%);
+      border-radius: 50%;
+      animation: stamp-rotate 4s linear infinite;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .stamp-inner {
+      color: white;
+      font-size: 12px; /* 从8px放大50%到12px */
+      font-weight: bold;
+      text-align: center;
+      transform: rotate(-15deg);
+    }
+
+    .fixed-paper-stack {
+      position: absolute;
+      top: calc(65% + 45px); /* 向下移动45px */
+      left: 20px;
+    }
+
+    .fixed-paper-stack .paper-sheet {
+      position: absolute;
+      width: 75px; /* 从50px放大50%到75px */
+      height: 98px; /* 从65px放大50%到98px */
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 6px; /* 从4px放大50%到6px */
+      box-shadow: 0 3px 6px rgba(0,0,0,0.1); /* 从2px 4px放大50% */
+      animation: paper-stack 6s ease-in-out infinite;
+    }
+
+    .fixed-paper-stack .paper-sheet:nth-child(1) {
+      transform: rotate(-2deg);
+      animation-delay: 0s;
+    }
+
+    .fixed-paper-stack .paper-sheet:nth-child(2) {
+      transform: rotate(1deg);
+      top: -5px;
+      left: 5px;
+      animation-delay: 2s;
+    }
+
+    .fixed-paper-stack .paper-sheet:nth-child(3) {
+      transform: rotate(-1deg);
+      top: -10px;
+      left: 10px;
+      animation-delay: 4s;
+    }
+
+    /* 右侧固定动画样式 */
+    .fixed-printer {
+      position: absolute;
+      top: 15%;
+      right: 15px;
+      width: 120px; /* 从80px放大50%到120px */
+      height: 90px; /* 从60px放大50%到90px */
+      background: linear-gradient(135deg, #34495e 0%, #2c3e50 100%);
+      border-radius: 12px; /* 从8px放大50%到12px */
+      animation: printer-work 5s ease-in-out infinite;
+    }
+
+    .printer-body {
+      width: 100%;
+      height: 100%;
+      position: relative;
+    }
+
+    .printer-paper-tray {
+      position: absolute;
+      bottom: 0;
+      left: 15px; /* 从10px放大50%到15px */
+      right: 15px; /* 从10px放大50%到15px */
+      height: 23px; /* 从15px放大50%到23px */
+      background: #2c3e50;
+      border-radius: 0 0 6px 6px; /* 从4px放大50%到6px */
+    }
+
+    .printer-paper-output {
+      position: absolute;
+      top: 15px; /* 从10px放大50%到15px */
+      left: 30px; /* 从20px放大50%到30px */
+      right: 30px; /* 从20px放大50%到30px */
+      height: 12px; /* 从8px放大50%到12px */
+      background: white;
+      border-radius: 3px; /* 从2px放大50%到3px */
+      animation: paper-output 3s ease-in-out infinite;
+    }
+
+    .fixed-chart {
+      position: absolute;
+      top: 40%;
+      right: 15px;
+      width: 90px; /* 从60px放大50%到90px */
+      height: 120px; /* 从80px放大50%到120px */
+      display: flex;
+      align-items: end;
+      gap: 6px; /* 从4px放大50%到6px */
+      animation: chart-grow 4s ease-in-out infinite;
+    }
+
+    .chart-bar {
+      width: 12px; /* 从8px放大50%到12px */
+      background: linear-gradient(to top, #3498db 0%, #2980b9 100%);
+      border-radius: 3px 3px 0 0; /* 从2px放大50%到3px */
+      animation: bar-pulse 2s ease-in-out infinite;
+    }
+
+    .chart-bar:nth-child(1) { animation-delay: 0s; }
+    .chart-bar:nth-child(2) { animation-delay: 0.4s; }
+    .chart-bar:nth-child(3) { animation-delay: 0.8s; }
+    .chart-bar:nth-child(4) { animation-delay: 1.2s; }
+    .chart-bar:nth-child(5) { animation-delay: 1.6s; }
+
+    .fixed-file-icons {
+      position: absolute;
+      top: 65%;
+      right: 15px;
+      display: flex;
+      flex-direction: column;
+      gap: 15px; /* 从10px放大50%到15px */
+    }
+
+    .file-icon {
+      font-size: 36px; /* 从24px放大50%到36px */
+      animation: icon-bounce 3s ease-in-out infinite;
+    }
+
+    .file-icon:nth-child(1) { animation-delay: 0s; }
+    .file-icon:nth-child(2) { animation-delay: 1s; }
+    .file-icon:nth-child(3) { animation-delay: 2s; }
 
     /* Features Section */
     .features {
@@ -1117,6 +1532,98 @@
         width: 16px;
         height: 16px;
       }
+
+      /* 移动端发票动画优化 */
+      .invoice-paper {
+        width: 60px;
+        height: 80px;
+        animation-duration: 10s;
+      }
+
+      .invoice-paper::after {
+        font-size: 24px;
+      }
+
+      .scan-line-invoice {
+        width: 400px;
+        height: 3px;
+        animation-duration: 6s;
+      }
+
+      /* 移动端固定动画优化 */
+      .fixed-animations-left,
+      .fixed-animations-right {
+        width: 100px; /* 从80px调整到100px */
+        opacity: 0.5;
+        height: 100vh;
+      }
+
+      .fixed-animations-left {
+        left: 10px; /* 移动端显示在屏幕左侧边缘 */
+        transform: none;
+      }
+
+      .fixed-animations-right {
+        right: 10px; /* 移动端显示在屏幕右侧边缘 */
+        transform: none;
+      }
+
+      .fixed-calculator {
+        width: 90px; /* 从60px调整到90px */
+        height: 112px; /* 从80px调整到112px */
+        left: 15px;
+      }
+
+      .calc-screen {
+        width: 75px; /* 从50px调整到75px */
+        height: 28px; /* 从20px调整到28px */
+      }
+
+      .calc-number {
+        font-size: 11px; /* 从8px调整到11px */
+      }
+
+      .fixed-stamp {
+        width: 68px; /* 从45px调整到68px */
+        height: 68px; /* 从45px调整到68px */
+        left: 25px;
+      }
+
+      .stamp-inner {
+        font-size: 9px; /* 从6px调整到9px */
+      }
+
+      .fixed-paper-stack .paper-sheet {
+        width: 52px; /* 从35px调整到52px */
+        height: 68px; /* 从45px调整到68px */
+      }
+
+      .fixed-printer {
+        width: 90px; /* 从60px调整到90px */
+        height: 68px; /* 从45px调整到68px */
+        right: 8px;
+      }
+
+      .fixed-chart {
+        width: 68px; /* 从45px调整到68px */
+        height: 90px; /* 从60px调整到90px */
+        right: 15px;
+      }
+
+      .chart-bar {
+        width: 9px; /* 从6px调整到9px */
+      }
+
+      .file-icon {
+        font-size: 27px; /* 从18px调整到27px */
+      }
+    }
+
+    /* 小屏幕设备优化 */
+    @media (max-width: 480px) {
+      .invoice-animations {
+        display: none; /* 在很小的屏幕上隐藏动画以提升性能 */
+      }
     }
 
     /* Smooth Scroll */
@@ -1146,7 +1653,116 @@
       <div class="shape shape-1"></div>
       <div class="shape shape-2"></div>
       <div class="shape shape-3"></div>
-          </div>
+    </div>
+    
+    <!-- 简洁的发票主题动画元素 -->
+    <div class="invoice-animations" id="invoiceAnimations">
+      <!-- 发票文件飘落 - 随机位置 -->
+      <div class="invoice-paper" id="invoice1"></div>
+      <div class="invoice-paper" id="invoice2"></div>
+      <div class="invoice-paper" id="invoice3"></div>
+      <div class="invoice-paper" id="invoice4"></div>
+      <div class="invoice-paper" id="invoice5"></div>
+      
+      <!-- 简洁的扫描线 -->
+      <div class="scan-line-invoice" style="animation-delay: 2s;"></div>
+    </div>
+    
+    <!-- 左侧固定动画元素 -->
+    <div class="fixed-animations-left">
+      <!-- 发票计算器 -->
+      <div class="fixed-calculator">
+        <div class="calc-screen">
+          <span class="calc-number">¥888.88</span>
+        </div>
+        <div class="calc-buttons">
+          <div class="calc-btn"></div>
+          <div class="calc-btn"></div>
+          <div class="calc-btn"></div>
+          <div class="calc-btn"></div>
+        </div>
+      </div>
+      
+      <!-- 发票印章 -->
+      <div class="fixed-stamp">
+        <div class="stamp-inner">
+          <span>已审核</span>
+        </div>
+      </div>
+      
+      <!-- 发票堆叠效果 -->
+      <div class="fixed-paper-stack">
+        <div class="paper-sheet"></div>
+        <div class="paper-sheet"></div>
+        <div class="paper-sheet"></div>
+      </div>
+    </div>
+    
+    <!-- 右侧固定动画元素 -->
+    <div class="fixed-animations-right">
+      <!-- 打印机动画 -->
+      <div class="fixed-printer">
+        <div class="printer-body">
+          <div class="printer-paper-tray"></div>
+          <div class="printer-paper-output"></div>
+        </div>
+      </div>
+      
+      <!-- 发票统计图表 -->
+      <div class="fixed-chart">
+        <div class="chart-bar" style="height: 60%;"></div>
+        <div class="chart-bar" style="height: 80%;"></div>
+        <div class="chart-bar" style="height: 45%;"></div>
+        <div class="chart-bar" style="height: 90%;"></div>
+        <div class="chart-bar" style="height: 70%;"></div>
+      </div>
+      
+      <!-- 发票文件图标 -->
+      <div class="fixed-file-icons">
+        <div class="file-icon">📄</div>
+        <div class="file-icon">📊</div>
+        <div class="file-icon">💰</div>
+      </div>
+    </div>
+    
+    <!-- 立即初始化随机动画的脚本 -->
+    <script>
+      // 页面加载前立即设置随机位置，避免显示一排效果
+      (function() {
+        function setRandomPositions() {
+          for (let i = 1; i <= 5; i++) {
+            const invoice = document.getElementById(`invoice${i}`);
+            if (invoice) {
+              // 随机水平位置
+              const randomLeft = Math.random() * 85 + 5;
+              invoice.style.left = randomLeft + '%';
+              
+              // 随机动画延迟
+              const randomDelay = Math.random() * 10;
+              invoice.style.animationDelay = randomDelay + 's';
+              
+              // 随机动画持续时间
+              const randomDuration = Math.random() * 8 + 10;
+              invoice.style.animationDuration = randomDuration + 's';
+              
+              // 随机旋转角度
+              const randomRotation = (Math.random() - 0.5) * 16;
+              invoice.style.setProperty('--random-rotation', randomRotation + 'deg');
+              
+              // 显示发票
+              invoice.classList.add('initialized');
+            }
+          }
+        }
+        
+        // 如果DOM已经加载，立即执行
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', setRandomPositions);
+        } else {
+          setRandomPositions();
+        }
+      })();
+    </script>
     
     <div class="hero-content">
       <h1>发票打印助手</h1>
@@ -1303,8 +1919,8 @@
   <footer class="footer">
     <div class="footer-content">
       <div class="footer-links">
-        <a href="" target="_blank" rel="noopener noreferrer" class="footer-link">
-          经纬公司内部使用
+        <a href="https://beian.miit.gov.cn" target="_blank" rel="noopener noreferrer" class="footer-link">
+          浙ICP备2023031851号-4
         </a>
               </div>
       
@@ -1377,6 +1993,42 @@
 
     // 页面加载后生成粒子
     window.addEventListener('load', createParticles);
+
+    // 随机发票动画初始化
+    function initRandomInvoiceAnimations() {
+      // 为每个发票设置随机位置和延迟
+      for (let i = 1; i <= 5; i++) {
+        const invoice = document.getElementById(`invoice${i}`);
+        if (invoice) {
+          // 随机水平位置 (5% 到 90% 之间)
+          const randomLeft = Math.random() * 85 + 5;
+          invoice.style.left = randomLeft + '%';
+          
+          // 随机动画延迟 (0 到 10 秒)
+          const randomDelay = Math.random() * 10;
+          invoice.style.animationDelay = randomDelay + 's';
+          
+          // 随机动画持续时间 (10 到 18 秒)
+          const randomDuration = Math.random() * 8 + 10;
+          invoice.style.animationDuration = randomDuration + 's';
+          
+          // 随机旋转角度 (在原有基础上增加随机性)
+          const randomRotation = (Math.random() - 0.5) * 16; // -8 到 +8 度
+          invoice.style.setProperty('--random-rotation', randomRotation + 'deg');
+          
+          // 显示发票
+          invoice.classList.add('initialized');
+        }
+      }
+    }
+
+    // DOM加载完成后立即初始化随机动画
+    document.addEventListener('DOMContentLoaded', () => {
+      initRandomInvoiceAnimations();
+      
+      // 每20秒重新随机化一次，让动画保持新鲜感
+      setInterval(initRandomInvoiceAnimations, 20000);
+    });
 
     // 滚动动画观察器
     const observerOptions = {
