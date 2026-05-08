@@ -1,0 +1,13 @@
+User-agent: *
+Allow: /
+
+# Sitemap
+Sitemap: https://lcofo.cn/sitemap.xml
+
+# 允许所有搜索引擎抓取
+Crawl-delay: 1
+
+# 禁止抓取的文件类型（如果有的话）
+# Disallow: *.pdf
+# Disallow: /static/js/
+# Disallow: /static/css/

@@ -1,8 +1,8 @@
 {
   "name": "发票打印助手",
   "short_name": "发票助手",
-  "description": "电子发票合并打印工具 - V3.5.8",
-  "version": "3.5.8",
+  "description": "电子发票合并打印工具 - V6.0.0",
+  "version": "6.0.0",
   "start_url": "/index.html",
   "display": "standalone",
   "background_color": "#ffffff",

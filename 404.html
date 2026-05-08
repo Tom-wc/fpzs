@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>404 - 页面未找到 | 发票打印助手</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            padding: 20px;
+        }
+        
+        .container {
+            text-align: center;
+            max-width: 600px;
+        }
+        
+        .error-code {
+            font-size: 120px;
+            font-weight: 900;
+            line-height: 1;
+            margin-bottom: 20px;
+            text-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        
+        h1 {
+            font-size: 32px;
+            margin-bottom: 15px;
+        }
+        
+        p {
+            font-size: 18px;
+            margin-bottom: 30px;
+            opacity: 0.9;
+        }
+        
+        .buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            padding: 12px 30px;
+            border-radius: 50px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn-primary {
+            background: white;
+            color: #667eea;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        
+        .btn-secondary {
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: 2px solid white;
+        }
+        
+        .btn-secondary:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        
+        .error-info {
+            margin-top: 40px;
+            padding: 20px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 12px;
+            font-size: 14px;
+            text-align: left;
+        }
+        
+        .error-info h3 {
+            margin-bottom: 10px;
+        }
+        
+        .error-info ul {
+            list-style: none;
+            padding-left: 0;
+        }
+        
+        .error-info li {
+            padding: 5px 0;
+            padding-left: 20px;
+            position: relative;
+        }
+        
+        .error-info li:before {
+            content: "•";
+            position: absolute;
+            left: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="error-code">404</div>
+        <h1>页面未找到</h1>
+        <p>抱歉,您访问的页面不存在或已被移除</p>
+        
+        <div class="buttons">
+            <a href="/index.html" class="btn btn-primary">
+                <span>返回首页</span>
+            </a>
+            <a href="/main.html" class="btn btn-secondary">
+                <span>使用工具</span>
+            </a>
+        </div>
+        
+        <div class="error-info">
+            <h3>可能的原因:</h3>
+            <ul>
+                <li>URL地址输入错误</li>
+                <li>页面已被移动或删除</li>
+                <li>链接已过期</li>
+                <li>服务器配置问题</li>
+            </ul>
+        </div>
+    </div>
+    
+    <script>
+        // 自动重定向逻辑
+        const path = window.location.pathname;
+        
+        // 如果访问根路径,重定向到首页
+        if (path === '/' || path === '') {
+            window.location.href = '/index.html';
+        }
+        
+        // 如果访问main相关路径,重定向到功能页
+        if (path.includes('main')) {
+            window.location.href = '/main.html';
+        }
+        
+        // 记录404错误(如果有分析工具)
+        console.error('404 Error:', {
+            path: window.location.pathname,
+            referrer: document.referrer,
+            timestamp: new Date().toISOString()
+        });
+    </script>
+</body>
+</html>
