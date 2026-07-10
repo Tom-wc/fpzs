@@ -1,6 +1,6 @@
 # 发票打印助手 - 软件架构与使用报告
 
-**版本**: V6.0.0  
+**版本**: V6.1.0  
 **类型**: 纯前端 Web 应用（静态部署）  
 **运行环境**: 现代浏览器（Chrome/Edge/Firefox）
 
@@ -205,3 +205,28 @@ github6.5.1/
 3. **PDF 渲染**: 依赖 PDF.js CDN 资源，首次加载需要网络
 4. **字体**: 使用 Geist 字体族，通过本地 woff2 文件加载
 5. **CDN 依赖**: webpack runtime 中配置了 CDN 前缀，离线使用需修改为本地路径
+
+---
+
+## 九、更新记录
+
+### 2026-06-25
+
+针对铁路电子客票（火车票）等特殊发票的识别与渲染问题修复。云端版全部依赖保持 CDN，未引入本地资源。
+
+**发票识别（`static/js/custom/expense-report-core.js`）**
+- 新增「票价」金额识别模式：铁路电子客票用「票价」字段，原有「价税合计/支付金额/小写」模式无法匹配，导致金额识别为 0
+- 站名顺序按页面 x 坐标排序（左=出发站、右=到达站），修复报销单中出发地/目的地写反的问题；原逻辑按文本流顺序取站名会颠倒
+- `cMapUrl` 保持 CDN（`cdn.jsdelivr.net`），用于中文字符（含 ¥、价税合计等）解码
+
+**预览与合并（`main.html`）**
+- 新增 `File.prototype.arrayBuffer` 归一化补丁：部分铁路客票 CropBox/MediaBox 坐标上下颠倒（负高度），导致 pdf.js 渲染倒置。补丁在读取字节前统一修正畸形坐标框，预览/合并/报销单全部受益；解析失败时原样返回，不阻断上传
+- 修复补丁引入的 detached ArrayBuffer 报错：缓存改为私有字节快照、每次返回全新副本，避免 pdf.js worker transfer 后污染其他读取方
+- PDF 合并逻辑对 CropBox 做归一化（取 min/max），避免嵌入页面翻转
+- `expense-report-core.js` 引用追加 `?v=2`，破除 CDN/浏览器长缓存，确保识别修复生效
+
+**部署配置**
+- `nginx.conf`：JS 匹配规则由 `\.js$` 改为 `\.m?js$`，兼容 `.mjs` ES 模块（pdf.js worker），返回正确的 JS MIME
+- `.htaccess`：新增 `AddType application/javascript .mjs`
+
+**说明**：本项目同时维护一个离线打包版本（pkg 打成 exe，资源全本地化）；云端版与之相反，刻意保持全部走 CDN，适合静态托管。
