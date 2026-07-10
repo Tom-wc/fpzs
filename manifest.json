@@ -1,13 +1,17 @@
 {
-  "name": "发票打印助手",
+  "name": "发票打印助手 - 电子发票批量合并打印工具",
   "short_name": "发票助手",
-  "description": "电子发票合并打印工具 - V6.0.0",
-  "version": "6.0.0",
+  "description": "专业的电子发票处理工具，支持批量合并、自动统计、一键打印，本地处理不上传，免费在线使用。",
+  "lang": "zh-CN",
+  "version": "6.1.0",
   "start_url": "/index.html",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#000000",
-  "icons": []
+  "background_color": "#f6f7f9",
+  "theme_color": "#4338ca",
+  "icons": [
+    { "src": "/icon0.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon1.png", "sizes": "96x96", "type": "image/png", "purpose": "any" },
+    { "src": "/apple-icon.png", "sizes": "500x500", "type": "image/png", "purpose": "any maskable" }
+  ]
 }
-
-

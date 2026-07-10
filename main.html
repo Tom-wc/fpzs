@@ -1,40 +1,122 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html lang="zh-CN">
 
 <head>
   <meta charset="utf-8" />
+
+  <script>
+    (function () {
+      document.addEventListener('click', function (e) {
+        if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+        if (!a) return;
+        if (a.target && a.target !== '_self') return;
+        if (a.hasAttribute('download')) return;
+        var href = a.getAttribute('href') || '';
+        if (!href || href[0] === '#') return;               // 锚点不拦
+        var u;
+        try { u = new URL(href, location.href); } catch (err) { return; }
+        if (u.origin !== location.origin) return;           // 外链不拦
+        if (/\.html?$/.test(u.pathname) || u.pathname === '/' || u.pathname.slice(-1) === '/') {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          location.href = u.href;
+        }
+      }, true);
+    })();
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+  
   <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.8.69/pdf.worker.min.mjs" as="script" crossorigin="anonymous" />
+  <script>
+    (function () {
+      var CDN = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.8.69/pdf.worker.min.mjs';
+      var LOCAL = '/static/js/pdf.worker.min.mjs';
+      window.__PDF_WORKER_SRC = CDN;
+      function apply(src) {
+        window.__PDF_WORKER_SRC = src;
+        try {
+          if (window.pdfjsLib && window.pdfjsLib.GlobalWorkerOptions) {
+            window.pdfjsLib.GlobalWorkerOptions.workerSrc = src;
+          }
+        } catch (e) {}
+      }
+      var done = false;
+      var timer = setTimeout(function () { if (!done) { done = true; apply(LOCAL); } }, 2500);
+      fetch(CDN, { method: 'HEAD', mode: 'no-cors', cache: 'force-cache' })
+        .then(function () { if (!done) { done = true; clearTimeout(timer); apply(CDN); } })
+        .catch(function () { if (!done) { done = true; clearTimeout(timer); apply(LOCAL); } });
+    })();
+  </script>
   <meta http-equiv="Content-Security-Policy"
     content="default-src 'self' https: http: data: blob: 'unsafe-inline' 'unsafe-eval'; script-src 'self' https: http: 'unsafe-inline' 'unsafe-eval' blob: data:; style-src 'self' https: http: 'unsafe-inline' blob: data:; img-src * data: blob:; font-src * data: blob:; connect-src * data: blob:; frame-src * data: blob:; object-src * data: blob:; worker-src * blob: data:; child-src * blob: data:; media-src * blob: data:;" />
-  <!-- ====== V6.0.0 新功能：文件复制 + 打印增强 ====== -->
+  
   <script src="static/js/custom/file-copy-print.js" defer></script>
 
-  <!-- ====== 全局通知函数 - 供多个功能模块共享 ====== -->
+  
   <script src="static/js/custom/notifications.js" defer></script>
 
-  <!-- ====== V3.7.0 优化版报销单：自动识别发票金额和项目，生成与发票合并的报销单 ====== -->
+  
 
-  <!-- ====== V3.7.0 优化版报销单：自动识别发票金额和项目，生成与发票合并的报销单 ====== -->
+  
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
-  <script>/* pdf.js loaded via pdfjs-lib.js chunk (4.8.69) */</script>
-  <script src="static/js/custom/expense-report-core.js"></script>
+  <script></script>
+  <script src="static/js/custom/expense-report-core.js?v=2"></script>
   <script>
     (function () {
-      // ================================
-      // 2) 报销单生成 / 合并
-      // ================================
 
-      // 拦截 URL.createObjectURL 捕获 React 生成的 mergedPdfUrl
+      (function patchArrayBufferForCropBox() {
+        const _normCache = new WeakMap();
+        async function normalizePdf(buffer) {
+          try {
+            if (!window.PDFLib || buffer.byteLength < 5) return buffer;
+            const head = new Uint8Array(buffer.slice(0, 5));
+            if (String.fromCharCode.apply(null, head) !== '%PDF-') return buffer;
+            const doc = await window.PDFLib.PDFDocument.load(buffer, { updateMetadata: false });
+            let changed = false;
+            for (const page of doc.getPages()) {
+              const cb = page.getCropBox();
+              if (cb.width < 0 || cb.height < 0) {
+                page.setCropBox(Math.min(cb.x, cb.x + cb.width), Math.min(cb.y, cb.y + cb.height), Math.abs(cb.width), Math.abs(cb.height));
+                changed = true;
+              }
+              const mb = page.getMediaBox();
+              if (mb.width < 0 || mb.height < 0) {
+                page.setMediaBox(Math.min(mb.x, mb.x + mb.width), Math.min(mb.y, mb.y + mb.height), Math.abs(mb.width), Math.abs(mb.height));
+                changed = true;
+              }
+            }
+            if (!changed) return buffer;
+            const out = await doc.save();
+            return out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength);
+          } catch (e) {
+            return buffer;
+          }
+        }
+        const origAB = Blob.prototype.arrayBuffer;
+        Blob.prototype.arrayBuffer = async function () {
+          if (this.type !== 'application/pdf') return origAB.call(this);
+
+          let bytes = _normCache.get(this);
+          if (!bytes) {
+            const buf = await origAB.call(this);
+            const fixed = await normalizePdf(buf);
+            bytes = new Uint8Array(fixed);
+            _normCache.set(this, bytes);
+          }
+          return bytes.slice().buffer;
+        };
+      })();
+
       const _origCreateObjectURL = URL.createObjectURL.bind(URL);
       URL.createObjectURL = function (obj) {
         const url = _origCreateObjectURL(obj);
         if (obj && obj.type === 'application/pdf' && obj.size > 1000) {
           window.__lastPdfBlobUrl = url;
           window.__lastPdfBlob = obj;
-          // 保存发票合并PDF（排除我们自己生成的报销单合并结果）
+
           if (!window.__isGeneratingReport) {
             window.__invoiceMergedBlob = obj;
           }
@@ -44,17 +126,14 @@
 
       const { initPdfJs, extractInvoiceDataFromPdf } = window.__expenseReportCore || {};
 
-      // ===== 1. 发票数据缓存 =====
       window.__invoiceDataCache = window.__invoiceDataCache || {};
 
-      // ===== 4. 代理文件缓存，上传即自动提取 =====
       function initFileProxy() {
         if (!window.__fileDebugCache) {
           setTimeout(initFileProxy, 600);
           return;
         }
 
-        // 对已有文件立即提取
         for (const [name, file] of window.__fileDebugCache.entries()) {
           if (
             name.toLowerCase().endsWith('.pdf') &&
@@ -70,7 +149,6 @@
           }
         }
 
-        // 代理 set 方法监听新文件
         const origSet = Map.prototype.set;
         window.__fileDebugCache.set = function (key, value) {
           const result = origSet.call(this, key, value);
@@ -93,7 +171,6 @@
       }
       setTimeout(initFileProxy, 300);
 
-      // 从页面「发票统计」区域解析总金额与发票数量（与界面显示一致）
       function parseStatsFromDOM() {
         let totalAmount = null;
         let invoiceCount = null;
@@ -126,13 +203,7 @@
         };
       }
 
-      // ===== 5. 获取发票数据（优先使用页面显示的 React 统计，保证报销单金额与发票统计一致）=====
-      // 说明：
-      // - 优先从 React Fiber 中读取统计状态
-      // - 其次从已提取的 PDF 文本缓存获取
-      // - 最后回退到文件缓存兜底
       async function getInvoiceDataFromApp() {
-        // 方法1: React Fiber 状态（与页面「发票统计」一致，优先使用）
         await new Promise((r) => setTimeout(r, 300));
         let invoices = [];
 
@@ -174,7 +245,6 @@
 
               const cache = window.__invoiceDataCache || {};
 
-              // 确保所有发票的 PDF 文本已提取完成
               if (window.__fileDebugCache) {
                 const pending = [];
                 for (const inv of stats.invoices) {
@@ -196,7 +266,7 @@
               const statsTotal = stats.totalAmount ?? stats.total ?? stats.amount ?? null;
               invoices = stats.invoices.map((inv) => {
                 const cached = freshCache[inv.fileName] || {};
-                // React 的 total 始终以分为单位，除以100转为元
+
                 const reactAmount = typeof inv.total === 'number' ? inv.total / 100 : null;
                 const amount = reactAmount ?? cached.amount ?? 0;
                 console.log('🔎 React发票金额来源', {
@@ -216,7 +286,6 @@
                 };
               });
 
-              // totalAmount 也是分为单位
               let tot = null;
               if (typeof statsTotal === 'number') tot = statsTotal / 100;
 
@@ -227,7 +296,6 @@
           console.log('React获取失败:', e.message);
         }
 
-        // 方法2: 使用 PDF.js 提取结果，并用 DOM 总金额与发票统计对齐
         if (window.__invoiceDataCache) {
           const cached = Object.values(window.__invoiceDataCache).filter(
             (inv) => inv && !inv.fileName.includes('报销单') && !inv.fileName.startsWith('000_')
@@ -251,7 +319,6 @@
           }
         }
 
-        // 方法3: 文件缓存兜底（即时触发提取并等待）
         if (window.__fileDebugCache && window.__fileDebugCache.size > 0) {
           const pending = [];
           for (const [name, file] of window.__fileDebugCache.entries()) {
@@ -293,7 +360,6 @@
             };
           }
 
-          // 无金额的兜底
           for (const [name] of window.__fileDebugCache.entries()) {
             if (
               name.toLowerCase().endsWith('.pdf') &&
@@ -317,7 +383,6 @@
         return { invoices, totalAmount: domStats.totalAmount, totalCount: invoices.length };
       }
 
-      // ===== 6. 金额转中文大写 =====
       function numberToChinese(money) {
         const cnNums = ['零', '壹', '贰', '叁', '肆', '伍', '陆', '柒', '捌', '玖'];
         const cnIntRadice = ['', '拾', '佰', '仟'];
@@ -398,17 +463,10 @@
         return chineseStr;
       }
 
-
-      // ===== 7. 生成报销单HTML（A5横向，绿色格线；支持多页）=====
-      // 说明：
-      // - 先按文件名去重
-      // - 再按“车牌号 + 项目名”分组
-      // - 最终分页渲染成 A5 横向报销单
       function generateExpenseReportHTML(invoiceData, totalAmountOverride) {
         const now = new Date();
         let totalAmount = invoiceData.reduce((sum, inv) => sum + (parseFloat(inv.amount) || 0), 0);
 
-        // ===== 智能归类合并：按车牌号 + 项目名称分组，去重，统计数量 =====
         const seenFiles = new Set();
         const deduped = [];
         for (const inv of invoiceData) {
@@ -418,7 +476,6 @@
           deduped.push(inv);
         }
 
-        // 从项目名称中提取车牌号用于分组
         const plateRe = /([京津沪渝冀豫云辽黑湘皖鲁新苏浙赣鄂桂甘晋蒙陕吉闽贵粤川青藏琼宁][A-HJ-NP-Z][A-HJ-NP-Z0-9]{4,6})/;
         function extractPlate(inv) {
           const name = inv.projectName || inv.itemName || inv.name || '';
@@ -426,7 +483,6 @@
           return m ? m[1] : '';
         }
 
-        // 同义词归一：包含“通行费”的都归为“通行费”等
         function normalizeProject(raw) {
           let name = raw.replace(plateRe, '').trim() || '电子发票';
           if (name.includes('通行费')) name = '通行费';
@@ -485,7 +541,6 @@
         const borderColor = '#2e7d32';
         const maxRowsPerPage = 5;
 
-        // 将发票分页
         const pages = [];
         for (let i = 0; i < adjustedData.length; i += maxRowsPerPage) {
           pages.push(adjustedData.slice(i, i + maxRowsPerPage));
@@ -584,21 +639,21 @@
               display:flex; flex-direction:column; justify-content:center;">
 
             <div>
-            <!-- 标题 -->
+            
             <div style="position:relative;margin:4px 0 6px 0;">
               <h1 style="text-align:center;font-size:24px;font-weight:bold;
                 margin:0;letter-spacing:14px;">报&nbsp;&nbsp;销&nbsp;&nbsp;单</h1>
-              <!-- 记账凭证附件（标题行右侧框内） -->
+              
               <div style="position:absolute;right:0;top:0;border:1.5px solid ${borderColor};
                 padding:1px 10px 6px 10px;font-size:11px;font-weight:bold;letter-spacing:1px;color:${borderColor};">记账凭证附件</div>
             </div>
 
-            <!-- 日期行 -->
+            
             <div style="text-align:right;font-size:11px;margin-bottom:6px;">
               ${now.getFullYear()} 年 &nbsp; ${now.getMonth() + 1} 月 &nbsp; ${now.getDate()} 日
             </div>
 
-            <!-- 主表格（绿色格线） -->
+            
             <div>
               <table style="width:100%;border-collapse:collapse;border:1.5px solid ${borderColor};font-size:10px;table-layout:fixed;">
                 <colgroup>
@@ -645,7 +700,6 @@
         return `<div id="expenseReport">${allPagesHTML}</div>`;
       }
 
-      // ===== 8. 生成报销单主函数 =====
       async function generateExpenseReport() {
         try {
           showProcessingNotification('正在生成报销单');
@@ -654,7 +708,6 @@
           if (!window.jspdf) throw new Error('jsPDF 库未加载，请检查网络连接');
           if (!window.PDFLib) throw new Error('PDF-lib 库未加载，请检查网络连接');
 
-          // 强制重新提取发票数据，确保使用最新的提取逻辑
           if (window.__fileDebugCache && window.__fileDebugCache.size > 0) {
             const rePending = [];
             for (const [name, file] of window.__fileDebugCache.entries()) {
@@ -729,7 +782,6 @@
 
       window.generateExpenseReport = generateExpenseReport;
 
-      // ===== 8b. 手动确认生成报销单 =====
       async function generateExpenseReportManual() {
         try {
           if (typeof html2canvas === 'undefined') throw new Error('html2canvas 库未加载');
@@ -755,7 +807,6 @@
             return;
           }
 
-          // 弹出编辑确认弹窗
           const confirmed = await showInvoiceEditDialog(invoiceData);
           if (!confirmed) return;
 
@@ -840,7 +891,7 @@
               </table>
               <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px;">
                 <button id="__er_edit_cancel" style="padding:8px 20px;border:1px solid #d1d5db;border-radius:6px;background:white;cursor:pointer;font-size:14px;">取消</button>
-                <button id="__er_edit_confirm" style="padding:8px 20px;border:none;border-radius:6px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;cursor:pointer;font-size:14px;font-weight:600;">确认生成</button>
+                <button id="__er_edit_confirm" style="padding:8px 20px;border:none;border-radius:8px;background:#4338ca;color:white;cursor:pointer;font-size:14px;font-weight:600;box-shadow:0 4px 12px rgba(67,56,202,0.22);">确认生成</button>
               </div>
             </div>
           `;
@@ -885,7 +936,6 @@
 
       window.generateExpenseReportManual = generateExpenseReportManual;
 
-      // ===== 9. 下载PDF =====
       function downloadPdf(pdfData, filename) {
         const blob = pdfData instanceof Blob ? pdfData : new Blob([pdfData], { type: 'application/pdf' });
         const url = URL.createObjectURL(blob);
@@ -898,9 +948,6 @@
         setTimeout(() => URL.revokeObjectURL(url), 5000);
       }
 
-      // ===== [旧getInvoiceDataFromApp已由新版替代，此处放置新的辅助函数] =====
-
-      // ===== 10. 获取发票PDF原始文件 =====
       async function getInvoicePdfFiles() {
         const pdfFiles = [];
         if (!window.__fileDebugCache || window.__fileDebugCache.size === 0) return pdfFiles;
@@ -913,14 +960,12 @@
         return pdfFiles;
       }
 
-      // ===== LEGACY: 保留以防旧代码引用 =====
       async function _legacyGetInvoiceDataFromApp() {
-        // 等待React应用加载
+
         await new Promise(resolve => setTimeout(resolve, 500));
 
         let invoices = [];
 
-        // 方法1: 尝试从React组件的内部状态获取（通过React Fiber）
         try {
           const rootElement = document.querySelector('#__next') || document.querySelector('[data-reactroot]') || document.body;
           if (rootElement) {
@@ -931,12 +976,11 @@
             if (fiberKey) {
               let fiber = rootElement[fiberKey];
 
-              // 遍历Fiber树查找stats数据
               const findStats = (node, depth = 0) => {
-                if (depth > 20) return null; // 限制深度避免无限循环
+                if (depth > 20) return null;
 
                 if (node && node.memoizedState) {
-                  // 检查是否有stats对象
+
                   let current = node.memoizedState;
                   while (current) {
                     if (current.memoizedState && current.memoizedState.stats) {
@@ -949,7 +993,6 @@
                   }
                 }
 
-                // 递归查找子节点
                 if (node.child) {
                   const result = findStats(node.child, depth + 1);
                   if (result) return result;
@@ -967,17 +1010,13 @@
 
                 invoices = stats.invoices.map((inv, index) => {
                   const mapped = {
-                    // 发票号码
+
                     number: inv.number || inv.invoiceNumber || '',
-                    // 金额（可能以分为单位）
                     amount: (inv.total || inv.amount || 0) / 100,
-                    // 开具日期 - 尝试多个可能的字段
                     issueDate: inv.date || inv.invoiceDate || inv.issueDate || inv.billingDate || new Date(),
                     date: inv.date || inv.invoiceDate || inv.issueDate || inv.billingDate || new Date(),
-                    // 项目名称/货物或应税劳务名称 - 尝试多个可能的字段
                     projectName: inv.itemName || inv.goodsName || inv.projectName || inv.item || inv.name || '',
                     itemName: inv.itemName || inv.goodsName || inv.item || inv.name || '',
-                    // 其他信息
                     code: inv.code || inv.invoiceCode || '',
                     name: inv.fileName || inv.name || '电子发票'
                   };
@@ -985,7 +1024,6 @@
                   return mapped;
                 });
 
-                // 尝试从多个字段获取总金额 (通常以分为单位)
                 let totalAmount = null;
                 if (stats.totalAmount !== undefined) totalAmount = stats.totalAmount / 100;
                 else if (stats.total !== undefined) totalAmount = stats.total / 100;
@@ -1003,15 +1041,12 @@
           console.log('⚠️ 从React状态获取失败:', error.message);
         }
 
-        // 方法2: 从DOM中提取发票文件信息（更精确的选择器）
         if (invoices.length === 0) {
           const processedFiles = new Set();
 
-          // 查找所有包含PDF文件名的元素
           const allElements = document.querySelectorAll('*');
           allElements.forEach(elem => {
             const text = elem.textContent || '';
-            // 只处理包含.pdf且文本不太长的元素
             if (text.includes('.pdf') && text.length < 300) {
               const pdfMatches = text.match(/([^\s\/\\]+\.pdf)/gi);
               if (pdfMatches) {
@@ -1019,13 +1054,11 @@
                   if (!processedFiles.has(fileName) && !fileName.includes('_副本')) {
                     processedFiles.add(fileName);
 
-                    // 尝试从文件名中提取金额
-                    // 常见格式: 公司名_金额_其他.pdf
                     const amountPatterns = [
-                      /_(\d+\.?\d*)_/,     // _518.20_
-                      /_(\d+\.?\d*)\./,    // _518.20.pdf
-                      /(\d+\.?\d*)_/,      // 518.20_
-                      /_(\d+)\.(\d+)_/,    // _518.20_
+                      /_(\d+\.?\d*)_/,
+                      /_(\d+\.?\d*)\./,
+                      /(\d+\.?\d*)_/,
+                      /_(\d+)\.(\d+)_/,
                     ];
 
                     let amount = 0;
@@ -1037,7 +1070,6 @@
                       }
                     }
 
-                    // 如果没有从文件名提取到金额，尝试从周围文本提取
                     if (amount === 0) {
                       const parentText = elem.parentElement?.textContent || '';
                       const amountMatch = parentText.match(/(\d+\.?\d*)\s*元|¥\s*(\d+\.?\d*)/);
@@ -1058,7 +1090,6 @@
           });
         }
 
-        // 方法3: 从统计信息中获取（备用方案）
         if (invoices.length === 0) {
           console.log('🔍 方法3: 从统计信息提取...');
 
@@ -1069,20 +1100,17 @@
           statsElements.forEach(elem => {
             const text = elem.textContent || '';
 
-            // 查找"发票数量: X 张" 或 "X 张"
             const countMatch = text.match(/发票数量[：:]\s*(\d+)|(\d+)\s*张/);
             if (countMatch && !invoiceCount) {
               invoiceCount = parseInt(countMatch[1] || countMatch[2]);
             }
 
-            // 查找"总金额: ¥X" 或 "¥X"
             const amountMatch = text.match(/总金额[：:]\s*¥?\s*([\d,]+\.?\d*)|¥\s*([\d,]+\.?\d*)/);
             if (amountMatch && !totalAmount) {
               totalAmount = parseFloat((amountMatch[1] || amountMatch[2]).replace(/,/g, ''));
             }
           });
 
-          // 如果找到统计信息，创建发票数据
           if (invoiceCount > 0 && totalAmount > 0) {
             const avgAmount = totalAmount / invoiceCount;
             for (let i = 0; i < invoiceCount; i++) {
@@ -1097,7 +1125,6 @@
           }
         }
 
-        // 返回统一的对象结构
         return {
           invoices: invoices,
           totalAmount: null, // 从DOM提取时无法保证总金额精度，设为null让后续逻辑重新计算
@@ -1105,11 +1132,6 @@
         };
       }
 
-      // ===== 11. 合并报销单与发票PDF（基于React已合并的PDF，报销单放最后一张发票空白区或单独页）=====
-      // 说明：
-      // - 优先复用 React 预览中的已合并发票 PDF
-      // - 没有时从缓存重新拼接发票 PDF
-      // - 再把报销单嵌入到最后或独立附加
       async function mergeReportWithInvoicesForPreview(reportPdfBytes, invoiceData) {
         showProcessingNotification('正在合并PDF');
         window.__isGeneratingReport = true;
@@ -1119,7 +1141,6 @@
 
           let basePdfBytes = null;
 
-          // 方法1: 使用拦截到的发票合并 Blob（最可靠）
           if (window.__invoiceMergedBlob) {
             try {
               basePdfBytes = await window.__invoiceMergedBlob.arrayBuffer();
@@ -1129,7 +1150,6 @@
             }
           }
 
-          // 方法2: 从 blob URL fetch
           if (!basePdfBytes && window.__lastPdfBlobUrl) {
             try {
               const resp = await fetch(window.__lastPdfBlobUrl);
@@ -1140,7 +1160,6 @@
             }
           }
 
-          // 方法3: 从文件缓存合并原始发票
           if (!basePdfBytes) {
             console.log('⚠️ 未从React获取到PDF，使用缓存文件');
             const pdfFiles = await getInvoicePdfFiles();
@@ -1163,7 +1182,6 @@
           const rptSrc = await PDFDocument.load(reportPdfBytes);
           const invoicePageCount = mergedPdf.getPageCount();
 
-          // 判断已有PDF是否为A4双联格式（页面尺寸接近A4）
           const A4W = 595.28, A4H = 841.89;
           const isAlreadyA4 = invoicePageCount > 0 && (function() {
             const pg = mergedPdf.getPage(0);
@@ -1173,7 +1191,7 @@
 
           let finalPdf;
           if (isAlreadyA4) {
-            // React已合并为A4双联格式，直接在其基础上添加报销单
+
             finalPdf = mergedPdf;
             const invoiceCount = invoiceData ? invoiceData.length : 0;
             const hasSlot = invoicePageCount > 0 && invoiceCount % 2 === 1;
@@ -1191,7 +1209,7 @@
                 extra.forEach((p) => finalPdf.addPage(p));
               }
             } else {
-              // 偶数张发票，报销单放新页上半部分
+
               for (const p of rptSrc.getPages()) {
                 const [ep] = await finalPdf.embedPages([p]);
                 const pg = finalPdf.addPage([A4W, A4H]);
@@ -1201,7 +1219,7 @@
               }
             }
           } else {
-            // 非A4格式（原始发票页），重新排版为A4双联 + 报销单
+
             finalPdf = await PDFDocument.create();
             const halfH = A4H / 2;
             let slotUsed = 0;
@@ -1211,12 +1229,17 @@
               const ew = srcPage.getSize().width, eh = srcPage.getSize().height;
               const rot = srcPage.getRotation().angle || 0;
 
-              // 使用 CropBox 嵌入实际可见内容
               const cropBox = srcPage.getCropBox();
               const mediaBox = srcPage.getMediaBox();
+
+              const cbLeft = Math.min(cropBox.x, cropBox.x + cropBox.width);
+              const cbRight = Math.max(cropBox.x, cropBox.x + cropBox.width);
+              const cbBottom = Math.min(cropBox.y, cropBox.y + cropBox.height);
+              const cbTop = Math.max(cropBox.y, cropBox.y + cropBox.height);
+              const cbW = cbRight - cbLeft, cbH = cbTop - cbBottom;
               let bbox;
-              if (cropBox.width < mediaBox.width * 0.95 || cropBox.height < mediaBox.height * 0.95) {
-                bbox = {left: cropBox.x, bottom: cropBox.y, right: cropBox.x + cropBox.width, top: cropBox.y + cropBox.height};
+              if (cbW < mediaBox.width * 0.95 || cbH < mediaBox.height * 0.95) {
+                bbox = {left: cbLeft, bottom: cbBottom, right: cbRight, top: cbTop};
               }
               const [embedded] = bbox
                 ? await finalPdf.embedPages([srcPage], [bbox])
@@ -1239,18 +1262,17 @@
               page.drawPage(embedded, { x, y, width: w, height: h });
             }
 
-            // 添加报销单到下一个可用槽位
             const rptPages = rptSrc.getPages();
             for (let ri = 0; ri < rptPages.length; ri++) {
               const [ep] = await finalPdf.embedPages([rptPages[ri]]);
 
               let page;
               if (slotUsed === 1) {
-                // 上半已有发票，报销单放下半
+
                 page = finalPdf.getPage(finalPdf.getPageCount() - 1);
                 slotUsed = 2;
               } else {
-                // 新建页，报销单放下半
+
                 page = finalPdf.addPage([A4W, A4H]);
                 slotUsed = 2;
               }
@@ -1265,7 +1287,7 @@
           const blob = new Blob([mergedBytes], { type: 'application/pdf' });
           window.__currentExpenseReportBlob = blob;
           window.__mergedPdfBlobUrl = URL.createObjectURL(blob);
-          showMergedPreview(window.__mergedPdfBlobUrl, finalPdf.getPageCount());
+          showMergedPreview(window.__mergedPdfBlobUrl, finalPdf.getPageCount(), false);
 
           console.log(
             `✅ 合并完成：${invoicePageCount} 页发票 + 报销单，总 ${finalPdf.getPageCount()} 页`
@@ -1278,34 +1300,29 @@
         }
       }
 
-      // ===== 12. 用 iframe 替换预览区域显示合并PDF =====
       function showMergedPreview(blobUrl, totalPages) {
-        // 找到 react-pdf 的滚动容器（包含所有页面的那个 div）
+
         const pdfDoc = document.querySelector('.react-pdf__Document');
         if (!pdfDoc) {
           console.warn('⚠️ 未找到 .react-pdf__Document');
           return;
         }
 
-        // pdfDoc 的父元素是 border rounded-lg 的 div，再上面是 CardContent
         const scrollParent = pdfDoc.parentElement;
         if (!scrollParent) return;
 
-        // 创建 iframe 替换 react-pdf 区域
         const iframe = document.createElement('iframe');
         iframe.id = '__er_merged_preview';
+
         iframe.src = blobUrl + '#navpanes=0&toolbar=0&zoom=page-width';
         iframe.style.cssText =
           'display:block;width:calc(100% - 32px);flex:1;min-height:300px;border:none;background:#ffffff;box-sizing:border-box;margin:0 16px;';
 
-        // 隐藏原有 react-pdf，插入 iframe
         pdfDoc.style.display = 'none';
 
-        // 移除之前的预览 iframe
         const old = document.getElementById('__er_merged_preview');
         if (old) old.remove();
 
-        // 确保父容器限制溢出
         scrollParent.style.overflow = 'hidden';
         scrollParent.style.position = 'relative';
         scrollParent.style.display = 'flex';
@@ -1317,7 +1334,6 @@
         const sec = document.querySelector('section[aria-label="发票处理工作区"]');
         if (sec) sec.classList.add('merged-preview');
 
-        // 更新页数显示
         if (totalPages) {
           const container =
             scrollParent.closest('[data-slot="card"]') || scrollParent.parentElement?.parentElement;
@@ -1348,7 +1364,8 @@
       async function showPdfInPreviewOnly(pdfBlob) {
         const blobUrl = URL.createObjectURL(pdfBlob);
         window.__mergedPdfBlobUrl = blobUrl;
-        showMergedPreview(blobUrl);
+
+        showMergedPreview(blobUrl, null, false);
         const oldFloat = document.getElementById('__er_float_panel');
         if (oldFloat) oldFloat.remove();
       }
@@ -1359,18 +1376,16 @@
         dlBar = document.createElement('div');
         dlBar.id = '__er_dl_bar';
         dlBar.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:99999;';
-        dlBar.innerHTML = `<button id="__er_dl_btn" style="padding:10px 24px;background:linear-gradient(135deg,#10b981,#059669);color:white;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 4px 12px rgba(16,185,129,0.4);">⬇️ 下载合并PDF</button>`;
+        dlBar.innerHTML = `<button id="__er_dl_btn" style="padding:10px 24px;background:#4338ca;color:white;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 6px 16px rgba(67,56,202,0.22);">⬇️ 下载合并PDF</button>`;
         document.body.appendChild(dlBar);
         document.getElementById('__er_dl_btn').addEventListener('click', () => downloadPdf(pdfBlob, `报销单_${ds}.pdf`));
       }
 
-      // ===== 13. 下载按钮（现已内嵌在 showPdfInPreviewOnly 创建的预览面板中）=====
       function addDownloadButtonToPreview(pdfBlob) {
-        // 新版预览面板已内置下载按钮，此函数保留为兼容接口
+
         window.__currentExpenseReportBlob = pdfBlob || window.__currentExpenseReportBlob;
       }
 
-      // ===== 14. 删除报销单，恢复原始发票预览 =====
       async function deleteExpenseReport() {
         window.__currentExpenseReportBlob = null;
         const dlBar = document.getElementById('__er_dl_bar');
@@ -1394,11 +1409,9 @@
       }
       window.deleteExpenseReport = deleteExpenseReport;
 
-      // ===== 15. 在发票统计区域下方添加报销单卡片 =====
       function addExpenseReportCard() {
         if (document.querySelector('.expense-report-operations-card')) return;
 
-        // 查找统计卡片（多策略）
         let statsCard = null;
         for (const el of document.querySelectorAll('[data-slot="card"]')) {
           const t = el.textContent || '';
@@ -1434,23 +1447,23 @@
           <div style="display:flex;gap:10px;flex-wrap:wrap;">
             <button class="er-btn-gen" style="
               flex:1;min-width:130px;padding:10px 16px;
-              background:linear-gradient(135deg,#6366f1,#8b5cf6);
-              color:white;border:none;border-radius:8px;font-size:14px;font-weight:600;
-              cursor:pointer;box-shadow:0 2px 8px rgba(99,102,241,0.35);transition:filter 0.2s;">
+              background:#f0fdf4;
+              color:#15803d;border:1px solid #bbf7d0;border-radius:8px;font-size:14px;font-weight:600;
+              cursor:pointer;box-shadow:0 1px 3px rgba(21,128,61,0.08);transition:filter 0.2s;">
               📋 自动生成报销单
             </button>
             <button class="er-btn-manual" style="
               flex:1;min-width:130px;padding:10px 16px;
-              background:linear-gradient(135deg,#f59e0b,#d97706);
-              color:white;border:none;border-radius:8px;font-size:14px;font-weight:600;
-              cursor:pointer;box-shadow:0 2px 8px rgba(245,158,11,0.35);transition:filter 0.2s;">
+              background:#eef0f6;
+              color:#3730a3;border:none;border-radius:8px;font-size:14px;font-weight:600;
+              cursor:pointer;box-shadow:0 1px 3px rgba(30,35,48,0.06);transition:filter 0.2s;">
               ✏️ 手动确认生成报销单
             </button>
             <button class="er-btn-dl" style="
               flex:1;min-width:130px;padding:10px 16px;
-              background:linear-gradient(135deg,#10b981,#059669);
-              color:white;border:none;border-radius:8px;font-size:14px;font-weight:600;
-              cursor:pointer;box-shadow:0 2px 8px rgba(16,185,129,0.35);transition:filter 0.2s;">
+              background:white;
+              color:#4338ca;border:1px solid #c7cbe8;border-radius:8px;font-size:14px;font-weight:600;
+              cursor:pointer;box-shadow:0 1px 3px rgba(30,35,48,0.06);transition:filter 0.2s;">
               ⬇️ 生成并下载
             </button>
             <button class="er-btn-del" style="
@@ -1490,7 +1503,6 @@
         console.log('✅ 报销单卡片已插入');
       }
 
-      // ===== 16. 初始化：多重重试确保卡片被添加 =====
       let _cardAttempts = 0;
       function tryAddExpenseCard() {
         if (document.querySelector('.expense-report-operations-card')) return;
@@ -1498,9 +1510,8 @@
         addExpenseReportCard();
       }
 
-      // 延迟到 DOM 完全就绪后再启动
       function startCardWatcher() {
-        // 注入CSS：左右两栏底部对齐，预览区填满
+
         const style = document.createElement('style');
         style.id = 'expense-layout-style';
         style.textContent = `
@@ -1560,12 +1571,10 @@
         `;
         document.head.appendChild(style);
 
-        // 首次尝试（React组件加载需要时间，从2秒开始）
         setTimeout(tryAddExpenseCard, 2000);
         setTimeout(tryAddExpenseCard, 4000);
         setTimeout(tryAddExpenseCard, 8000);
 
-        // MutationObserver监控：当统计卡片出现时自动添加报销单卡片
         if (document.body) {
           const _cardObserver = new MutationObserver(() => {
             let hasStats = false;
@@ -1581,7 +1590,7 @@
             }
           });
           _cardObserver.observe(document.body, { childList: true, subtree: true });
-          // 90秒后停止监控
+
           setTimeout(() => _cardObserver.disconnect(), 90000);
         }
       }
@@ -1592,8 +1601,6 @@
         startCardWatcher();
       }
 
-      // ===== BELOW: 旧的遗留函数（已废弃，仅保留以防被意外调用）=====
-      // [REPLACED] async function mergeWithInvoices
       async function _legacyMergeWithInvoices(reportPdfBytes, invoiceData) {
         try {
           showProcessingNotification('正在合并PDF文件...');
@@ -1602,17 +1609,15 @@
 
           const mergedPdf = await PDFDocument.load(reportPdfBytes);
 
-          // 获取所有发票PDF文件
           const invoicePdfs = await getInvoicePdfFiles(invoiceData);
 
           if (invoicePdfs.length === 0) {
-            // 只下载报销单
+
             const pdfBytes = await mergedPdf.save();
             downloadPdf(pdfBytes, `报销单_${new Date().getTime()}.pdf`);
             return;
           }
 
-          // 将每个发票PDF的所有页面添加到合并PDF中
           for (let i = 0; i < invoicePdfs.length; i++) {
             try {
               const invoicePdfBytes = invoicePdfs[i];
@@ -1627,10 +1632,8 @@
             }
           }
 
-          // 保存合并后的PDF
           const mergedPdfBytes = await mergedPdf.save();
 
-          // 显示在预览页面而不是下载
           showPdfInPreview(mergedPdfBytes);
 
         } catch (error) {
@@ -1639,17 +1642,14 @@
         }
       }
 
-      // [旧版 - 已被新版替代]
       async function _legacyMergeReportWithInvoices(reportPdfBytes, invoiceData) {
         try {
           showProcessingNotification('正在合并PDF文件...');
 
           const { PDFDocument } = PDFLib;
 
-          // 加载报销单PDF
           const mergedPdf = await PDFDocument.load(reportPdfBytes);
 
-          // 方法1: 尝试从预览窗口的iframe获取已合并的PDF
           let existingMergedPdf = null;
           try {
             const previewPanel = document.querySelector('.fixed.top-0.right-0.h-full.z-50');
@@ -1657,7 +1657,7 @@
               const iframe = previewPanel.querySelector('iframe');
               if (iframe && iframe.src && iframe.src.startsWith('blob:')) {
                 console.log('🔍 发现预览窗口中的PDF:', iframe.src);
-                // 获取blob URL对应的PDF
+
                 const response = await fetch(iframe.src);
                 const existingPdfBytes = await response.arrayBuffer();
                 existingMergedPdf = await PDFDocument.load(existingPdfBytes);
@@ -1668,7 +1668,6 @@
             console.log('⚠️ 无法从预览窗口获取PDF:', error.message);
           }
 
-          // 如果成功获取到预览窗口的PDF,将其页面添加到报销单后面
           if (existingMergedPdf) {
             console.log('📄 将预览PDF的页面添加到报销单后面');
             const pages = await mergedPdf.copyPages(existingMergedPdf, existingMergedPdf.getPageIndices());
@@ -1676,20 +1675,19 @@
               mergedPdf.addPage(page);
             });
           } else {
-            // 方法2: 从缓存中获取所有发票PDF文件
+
             console.log('📦 从缓存获取发票文件');
             const invoicePdfs = await getInvoicePdfFiles(invoiceData);
 
             if (invoicePdfs.length === 0) {
               console.warn('⚠️ 没有找到发票文件');
-              // 如果没有发票,只显示报销单
+
               const pdfBytes = await mergedPdf.save();
               const blob = new Blob([pdfBytes], { type: 'application/pdf' });
               showPdfInPreviewOnly(blob);
               return;
             }
 
-            // 将每个发票PDF的所有页面添加到合并PDF中
             for (let i = 0; i < invoicePdfs.length; i++) {
               try {
                 const invoicePdfBytes = invoicePdfs[i];
@@ -1706,13 +1704,11 @@
             }
           }
 
-          // 保存合并后的PDF
           const mergedPdfBytes = await mergedPdf.save();
           const blob = new Blob([mergedPdfBytes], { type: 'application/pdf' });
 
           console.log('✅ PDF合并完成,总页数:', mergedPdf.getPageCount());
 
-          // 在预览窗口显示合并后的PDF,不添加到文件列表
           showPdfInPreviewOnly(blob);
 
         } catch (error) {
@@ -1721,33 +1717,28 @@
         }
       }
 
-      // [旧版 - 已被新版替代]
       async function _legacyMergeReportWithInvoicesForPreview(reportPdfBytes, invoiceData) {
         try {
           showProcessingNotification('正在合并PDF文件...');
 
           const { PDFDocument } = PDFLib;
 
-          // 加载报销单PDF
           const mergedPdf = await PDFDocument.load(reportPdfBytes);
           console.log('📋 报销单PDF已加载,页数:', mergedPdf.getPageCount());
 
-          // 优先方法:尝试从预览窗口的iframe获取已合并的PDF
           let existingMergedPdf = null;
           let foundPreviewPdf = false;
 
           try {
-            // 尝试多种方式查找预览窗口
+
             let iframe = null;
 
-            // 方法1: 查找固定定位的预览面板
             const previewPanel = document.querySelector('.fixed.top-0.right-0.h-full.z-50');
             if (previewPanel) {
               iframe = previewPanel.querySelector('iframe');
               console.log('🔍 方法1: 在预览面板中查找iframe');
             }
 
-            // 方法2: 直接查找所有iframe
             if (!iframe) {
               const iframes = document.querySelectorAll('iframe');
               for (const frame of iframes) {
@@ -1761,7 +1752,7 @@
 
             if (iframe && iframe.src && iframe.src.startsWith('blob:')) {
               console.log('🔍 发现预览窗口中的PDF:', iframe.src);
-              // 获取blob URL对应的PDF
+
               const response = await fetch(iframe.src);
               const existingPdfBytes = await response.arrayBuffer();
               existingMergedPdf = await PDFDocument.load(existingPdfBytes);
@@ -1774,7 +1765,6 @@
             console.log('⚠️ 无法从预览窗口获取PDF:', error.message);
           }
 
-          // 如果成功获取到预览窗口的PDF,将其页面添加到报销单后面
           if (existingMergedPdf && foundPreviewPdf) {
             console.log('📄 将预览PDF的 ' + existingMergedPdf.getPageCount() + ' 页添加到报销单后面');
             const pages = await mergedPdf.copyPages(existingMergedPdf, existingMergedPdf.getPageIndices());
@@ -1783,24 +1773,22 @@
             });
             console.log('✅ 合并完成,总页数:', mergedPdf.getPageCount());
           } else {
-            // 备用方法:从缓存中获取所有发票PDF文件
+
             console.log('📦 从缓存获取发票文件');
             const invoicePdfs = await getInvoicePdfFiles(invoiceData);
 
             if (invoicePdfs.length === 0) {
               console.warn('⚠️ 没有找到发票文件');
-              // 如果没有发票,只显示报销单
+
               const pdfBytes = await mergedPdf.save();
               const blob = new Blob([pdfBytes], { type: 'application/pdf' });
 
-              // 保存报销单blob供删除功能使用
               window.__currentExpenseReportBlob = blob;
 
               showPdfInPreviewOnly(blob);
               return;
             }
 
-            // 将每个发票PDF的所有页面添加到合并PDF中
             for (let i = 0; i < invoicePdfs.length; i++) {
               try {
                 const invoicePdfBytes = invoicePdfs[i];
@@ -1818,16 +1806,13 @@
             console.log('✅ 从缓存合并完成,总页数:', mergedPdf.getPageCount());
           }
 
-          // 保存合并后的PDF
           const mergedPdfBytes = await mergedPdf.save();
           const blob = new Blob([mergedPdfBytes], { type: 'application/pdf' });
 
           console.log('✅ PDF合并完成,总页数:', mergedPdf.getPageCount());
 
-          // 保存报销单blob供删除功能使用
           window.__currentExpenseReportBlob = blob;
 
-          // 在预览窗口显示合并后的PDF,不添加到文件列表
           showPdfInPreviewOnly(blob);
 
         } catch (error) {
@@ -1836,24 +1821,21 @@
         }
       }
 
-      // [旧版 deleteExpenseReport - 已被新版替代]
       async function _legacyDeleteExpenseReport() {
         try {
           console.log('🗑️ [legacy] 删除报销单,恢复原始发票预览...');
 
-          // 清除保存的报销单blob
           if (window.__currentExpenseReportBlob) {
             URL.revokeObjectURL(window.__currentExpenseReportBlob);
             window.__currentExpenseReportBlob = null;
           }
 
-          // 获取发票数据
           const data = await getInvoiceDataFromApp();
           const invoiceData = Array.isArray(data) ? data : (data.invoices || []);
 
           if (!invoiceData || invoiceData.length === 0) {
             console.log('⚠️ 没有发票数据,关闭预览窗口');
-            // 如果没有发票,关闭预览窗口
+
             const previewPanel = document.querySelector('.fixed.top-0.right-0.h-full.z-50');
             if (previewPanel) {
               previewPanel.classList.add('translate-x-full', 'opacity-0');
@@ -1863,7 +1845,6 @@
             return;
           }
 
-          // 重新合并原始发票(不包含报销单)
           console.log('📦 重新合并原始发票...');
           const invoicePdfs = await getInvoicePdfFiles(invoiceData);
 
@@ -1873,7 +1854,6 @@
             return;
           }
 
-          // 使用PDFLib合并发票
           const { PDFDocument } = PDFLib;
           const mergedPdf = await PDFDocument.create();
 
@@ -1891,13 +1871,11 @@
             }
           }
 
-          // 保存并显示合并后的发票
           const mergedPdfBytes = await mergedPdf.save();
           const blob = new Blob([mergedPdfBytes], { type: 'application/pdf' });
 
           console.log('✅ 原始发票已恢复,总页数:', mergedPdf.getPageCount());
 
-          // 更新预览窗口
           showPdfInPreviewOnly(blob);
 
           showSuccessNotification('✅ 报销单已删除,已恢复原始发票预览');
@@ -1907,34 +1885,27 @@
         }
       }
 
-      // 将函数设置为全局可访问,供React组件调用
       window.deleteExpenseReport = deleteExpenseReport;
 
-      // [旧版 showPdfInPreviewOnly - 已被新版替代]
       function _legacyShowPdfInPreviewOnly(pdfBlob) {
         try {
           console.log('📺 [legacy] 更新预览窗口显示合并后的PDF');
 
-          // 创建Blob URL用于预览
           const blobUrl = URL.createObjectURL(pdfBlob);
 
-          // 查找预览侧边栏
           const previewPanel = document.querySelector('.fixed.top-0.right-0.h-full.z-50');
           if (!previewPanel) {
-            // 如果找不到预览面板,回退到下载
+
             console.warn('未找到预览面板,回退到下载');
             downloadPdf(pdfBlob, `报销单_${new Date().getTime()}.pdf`);
             return;
           }
 
-          // 打开预览面板
           previewPanel.classList.remove('translate-x-full', 'opacity-0');
           previewPanel.classList.add('translate-x-0', 'opacity-100');
 
-          // 保存blob URL到全局变量
           window.__mergedPdfBlobUrl = blobUrl;
 
-          // 定义更新iframe的函数
           const updateIframe = () => {
             const iframe = previewPanel.querySelector('iframe');
             if (iframe && iframe.src !== blobUrl) {
@@ -1945,10 +1916,8 @@
             return false;
           };
 
-          // 立即尝试更新
           setTimeout(() => updateIframe(), 100);
 
-          // 设置持续监听,每500ms检查一次,持续5秒
           let updateCount = 0;
           const intervalId = setInterval(() => {
             updateCount++;
@@ -1963,57 +1932,43 @@
             }
           }, 500);
 
-          // 5秒后停止
           setTimeout(() => {
             clearInterval(intervalId);
           }, 5000);
 
-          // 注意:不触发文件上传事件,不添加到文件缓存,确保报销单不出现在文件列表中
-
         } catch (error) {
           console.error('❌ 在预览窗口显示报销单失败:', error);
-          // 失败时下载
+
           downloadPdf(pdfBlob, `报销单_${new Date().getTime()}.pdf`);
         }
       }
 
-      // 保留原有的 showPdfInPreview 函数作为备用(已弃用)
-      // 在预览页面显示PDF - 将报销单添加到文件列表
-      // 注意：此功能尝试将生成的PDF注入到前端文件列表中，可能因网站实现不同而失效。
-      // 如果失败，将回退到直接下载。
       function showPdfInPreview(pdfBytes) {
         try {
-          // console.log('📺 将报销单添加到文件列表'); // 调试日志已删除
 
-          // 创建报销单文件对象
           const blob = new Blob([pdfBytes], { type: 'application/pdf' });
           const fileName = `报销单_${new Date().getTime()}.pdf`;
           const file = new File([blob], fileName, { type: 'application/pdf' });
 
-          // 将报销单添加到文件缓存（如果存在）
           if (window.__fileDebugCache) {
-            // 将报销单添加到缓存的最前面
+
             const tempCache = new Map();
             tempCache.set(fileName, file);
 
-            // 复制现有文件到新缓存
             for (const [key, value] of window.__fileDebugCache.entries()) {
               tempCache.set(key, value);
             }
 
-            // 替换缓存
             window.__fileDebugCache = tempCache;
-            // console.log('✅ 报销单已添加到文件缓存（第一个位置）'); // 调试日志已删除
+
           }
 
-          // 触发文件上传事件，让应用重新处理文件列表
           const fileInput = document.querySelector('input[type="file"]');
           if (fileInput) {
-            // 创建一个包含报销单的FileList模拟对象
+
             const dataTransfer = new DataTransfer();
             dataTransfer.items.add(file);
 
-            // 触发change事件
             const changeEvent = new Event('change', { bubbles: true });
             Object.defineProperty(changeEvent, 'target', {
               writable: false,
@@ -2021,35 +1976,30 @@
             });
 
             fileInput.dispatchEvent(changeEvent);
-            // console.log('✅ 已触发文件上传事件'); // 调试日志已删除
+
           }
 
-          // 触发自定义事件通知应用
           const addFileEvent = new CustomEvent('addExpenseReport', {
             detail: { file, fileName, blob }
           });
           document.dispatchEvent(addFileEvent);
 
-          // console.log('✅ 报销单已添加到预览列表'); // 调试日志已删除
-
         } catch (error) {
           console.error('❌ 添加报销单到预览失败:', error);
-          // 失败时下载
+
           downloadPdf(pdfBytes, `报销单_${new Date().getTime()}.pdf`);
         }
       }
 
-      // [旧版 getInvoicePdfFiles - 已被新版替代]
       async function _legacyGetInvoicePdfFiles(invoiceData) {
         const pdfFiles = [];
 
-        // 尝试从缓存中获取PDF文件
         if (window.__fileDebugCache && window.__fileDebugCache.size > 0) {
           console.log('📦 [legacy] 从缓存中获取PDF文件,缓存大小:', window.__fileDebugCache.size);
 
           for (const [fileName, file] of window.__fileDebugCache.entries()) {
             console.log('检查文件:', fileName);
-            // 排除副本文件和报销单文件(包括000_前缀的文件)
+
             if (fileName.toLowerCase().endsWith('.pdf') &&
               !fileName.includes('_副本') &&
               !fileName.includes('报销单') &&
@@ -2072,7 +2022,6 @@
         return pdfFiles;
       }
 
-      // [旧版 addExpenseReportCard 已被新版替代，此处保留仅防被引用]
       function _legacyAddExpenseReportCard() {
         const existingCards = document.querySelectorAll('.expense-report-operations-card');
         existingCards.forEach(card => {
@@ -2080,7 +2029,6 @@
           card.remove();
         });
 
-        // 查找发票统计卡片
         const statsCards = document.querySelectorAll('[data-slot="card"]');
         let statsCard = null;
 
@@ -2097,7 +2045,6 @@
           return;
         }
 
-        // 创建报销单操作卡片
         const reportCard = document.createElement('div');
         reportCard.className = 'expense-report-operations-card';
         reportCard.setAttribute('data-slot', 'card');
@@ -2113,7 +2060,6 @@
           gap: 24px;
         `;
 
-        // 创建标题
         const header = document.createElement('div');
         header.setAttribute('data-slot', 'card-header');
         header.style.cssText = 'padding: 0;';
@@ -2125,7 +2071,6 @@
 
         header.appendChild(title);
 
-        // 创建内容区域
         const content = document.createElement('div');
         content.setAttribute('data-slot', 'card-content');
         content.style.cssText = 'padding: 0;';
@@ -2133,28 +2078,32 @@
         const buttonContainer = document.createElement('div');
         buttonContainer.style.cssText = 'display: flex; gap: 12px;';
 
-        // 生成报销单按钮
         const generateBtn = document.createElement('button');
         generateBtn.textContent = '📋 自动生成报销单';
         generateBtn.style.cssText = `
           flex: 1;
-          padding: 10px 16px;
-          background: linear-gradient(to right, rgb(168, 85, 247), rgb(79, 70, 229));
+          padding: 11px 16px;
+          background: #4338ca;
           color: white;
           border: none;
-          border-radius: 6px;
+          border-radius: 10px;
           font-size: 14px;
-          font-weight: 500;
+          font-weight: 600;
           cursor: pointer;
-          transition: all 0.2s;
+          box-shadow: 0 6px 16px rgba(67, 56, 202, 0.22);
+          transition: all 0.25s cubic-bezier(0.32, 0.72, 0, 1);
         `;
 
         generateBtn.addEventListener('mouseenter', () => {
-          generateBtn.style.background = 'linear-gradient(to right, rgb(147, 51, 234), rgb(67, 56, 202))';
+          generateBtn.style.background = '#3730a3';
+          generateBtn.style.boxShadow = '0 8px 22px rgba(67, 56, 202, 0.30)';
+          generateBtn.style.transform = 'translateY(-1px)';
         });
 
         generateBtn.addEventListener('mouseleave', () => {
-          generateBtn.style.background = 'linear-gradient(to right, rgb(168, 85, 247), rgb(79, 70, 229))';
+          generateBtn.style.background = '#4338ca';
+          generateBtn.style.boxShadow = '0 6px 16px rgba(67, 56, 202, 0.22)';
+          generateBtn.style.transform = 'translateY(0)';
         });
 
         generateBtn.addEventListener('click', () => {
@@ -2163,7 +2112,6 @@
           }
         });
 
-        // 删除报销单按钮
         const deleteBtn = document.createElement('button');
         deleteBtn.textContent = '🗑️ 删除报销单';
         deleteBtn.style.cssText = `
@@ -2193,28 +2141,29 @@
           }
         });
 
-        // 手动确认生成报销单按钮
         const manualBtn2 = document.createElement('button');
         manualBtn2.textContent = '✏️ 手动确认生成报销单';
         manualBtn2.style.cssText = `
           flex: 1;
-          padding: 10px 16px;
-          background: linear-gradient(to right, rgb(245, 158, 11), rgb(217, 119, 6));
-          color: white;
+          padding: 11px 16px;
+          background: #eef0f6;
+          color: #3730a3;
           border: none;
-          border-radius: 6px;
+          border-radius: 10px;
           font-size: 14px;
-          font-weight: 500;
+          font-weight: 600;
           cursor: pointer;
-          transition: all 0.2s;
+          transition: all 0.25s cubic-bezier(0.32, 0.72, 0, 1);
         `;
 
         manualBtn2.addEventListener('mouseenter', () => {
-          manualBtn2.style.filter = 'brightness(1.12)';
+          manualBtn2.style.background = '#e4e7f2';
+          manualBtn2.style.transform = 'translateY(-1px)';
         });
 
         manualBtn2.addEventListener('mouseleave', () => {
-          manualBtn2.style.filter = '';
+          manualBtn2.style.background = '#eef0f6';
+          manualBtn2.style.transform = 'translateY(0)';
         });
 
         manualBtn2.addEventListener('click', () => {
@@ -2231,12 +2180,9 @@
         reportCard.appendChild(header);
         reportCard.appendChild(content);
 
-        // 插入到统计卡片后面
         statsCard.parentElement.insertBefore(reportCard, statsCard.nextSibling);
         console.log('✅ 报销单操作卡片已添加');
       }
-
-      // [旧启动逻辑已由新版 tryAddExpenseCard 替代]
 
     })();
   </script>
@@ -2256,7 +2202,7 @@
   <script src="static/js/routing-utils.js" async="" crossorigin=""></script>
   <script src="static/js/dialog-scroll-lock.js" async="" crossorigin=""></script>
   <script src="static/js/dnd-kit-sortable.js" async="" crossorigin=""></script>
-  <script src="static/js/alert-dialog.js?v=2" async="" crossorigin=""></script>
+  <script src="static/js/alert-dialog.js" async="" crossorigin=""></script>
   <script src="static/js/invoice-tool-ui.js?v=2" async="" crossorigin=""></script>
   <script src="static/js/page-entry-invoice.js" async="" crossorigin=""></script>
   <script src="static/js/shared-ui-primitives.js" async="" crossorigin=""></script>
@@ -2264,10 +2210,19 @@
   <script src="static/js/not-found-page.js" async="" crossorigin=""></script>
   <meta name="next-size-adjust" content="" />
   <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
+  <meta name="theme-color" content="#4338ca">
   <link rel="canonical" href="https://lcofo.cn/main.html">
   <title>发票打印助手 - 在线PDF合并打印 | 电子发票处理工具</title>
 
-  <!-- Schema.org结构化数据 -->
+  
+  <meta property="og:site_name" content="发票打印助手">
+  <meta property="og:url" content="https://lcofo.cn/main.html">
+  <meta property="og:image" content="https://lcofo.cn/apple-icon.png">
+  <meta property="og:image:width" content="500">
+  <meta property="og:image:height" content="500">
+  <meta name="twitter:image" content="https://lcofo.cn/apple-icon.png">
+
+  
   <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -2296,22 +2251,21 @@
     }
     </script>
 
-  <meta name="description" content="专业的电子发票处理解决方案，支持批量合并、自动统计、一键打印。让报销更简单，让财务更轻松。免费在线使用，无需注册。" />
+  <meta name="description" content="在线电子发票合并打印工具：拖入多张 PDF 发票，自动排进 A4 版面，一次打印全部输出，自动统计金额、一键生成报销单。全程浏览器本地处理不上传，免费即开即用，无需注册下载。" />
   <meta name="author" content="发票打印助手" />
   <link rel="manifest" href="/manifest.json" />
   <meta name="keywords"
-    content="电子发票,发票合并,发票处理,PDF合并,批量处理,财务工具,报销工具,发票统计,发票打印,电子发票打印,发票批量打印,PDF发票合并,发票管理工具,财务报销,电子发票处理,发票整理,发票归档,免费发票工具,发票助手,发票软件,在线发票工具" />
+    content="电子发票合并,在线发票合并,PDF发票合并打印,发票批量打印,多张发票合并打印,发票合并成一个PDF,电子发票批量处理,发票A4排版,报销单生成,发票金额统计,发票打印工具,在线PDF合并,免费发票合并,发票处理工具" />
   <meta name="creator" content="发票打印助手" />
   <meta name="publisher" content="发票打印助手" />
-  <meta name="robots" content="index, follow" />
   <meta name="apple-mobile-web-app-title" content="发票打印助手" />
-  <meta property="og:title" content="发票打印助手 - 让报销更简单，让财务更轻松" />
-  <meta property="og:description" content="专业的电子发票处理解决方案，支持批量合并、自动统计、一键打印" />
+  <meta property="og:title" content="发票打印助手 - 在线批量合并电子发票，一次打印全部输出" />
+  <meta property="og:description" content="拖入多张 PDF 发票自动排进 A4 版面，一次打印全部输出，自动统计金额、一键生成报销单。本地处理不上传，免费在线使用。" />
   <meta property="og:locale" content="zh_CN" />
   <meta property="og:type" content="website" />
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="发票打印助手" />
-  <meta name="twitter:description" content="专业的电子发票处理解决方案，让报销更简单，让财务更轻松" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="发票打印助手 - 在线批量合并电子发票" />
+  <meta name="twitter:description" content="拖入多张 PDF 发票自动排进 A4 版面，一次打印全部输出，自动统计金额、一键生成报销单。本地处理不上传，免费在线使用。" />
   <link rel="icon" href="favicon.ico" type="image/x-icon" sizes="48x48" />
   <link rel="icon" href="icon0.svg" type="image/svg+xml" sizes="any" />
   <link rel="icon" href="icon1.png" type="image/png" sizes="96x96" />
@@ -2324,42 +2278,23 @@
       .forEach((el) => document.head.appendChild(el));
   </script>
   <script src="static/js/polyfills.js" crossorigin="anonymous" nomodule=""></script>
-  <!-- 字体样式和渐变动画 - 内联关键CSS -->
+  
   <style id="logo-title-styles">
-    /* 使用系统字体栈替代站酷酷黑 */
 
-    /* 彩虹流动动画 */
-    @keyframes rainbow-flow {
-
-      0%,
-      100% {
-        background-position: 0% 50%;
-      }
-
-      50% {
-        background-position: 100% 50%;
-      }
-    }
-
-    /* ========== 增强版背景效果（来自 index.html）========== */
-    /* 动态渐变背景层 */
     body::before {
       content: '';
       position: fixed;
-      top: -50%;
-      left: -50%;
-      width: 200%;
-      height: 200%;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
-      background-size: 200% 200%;
-      animation: gradient-bg 15s ease infinite;
-      opacity: 0.15;
-      filter: blur(60px);
+      top: -40%;
+      left: -30%;
+      width: 180%;
+      height: 180%;
+      background:
+        radial-gradient(closest-side at 22% 18%, rgba(67, 56, 202, 0.10), transparent 70%),
+        radial-gradient(closest-side at 82% 78%, rgba(67, 56, 202, 0.06), transparent 70%);
       pointer-events: none;
       z-index: 0;
     }
 
-    /* 网格背景 */
     body::after {
       content: '';
       position: fixed;
@@ -2368,21 +2303,19 @@
       right: 0;
       bottom: 0;
       background-image:
-        linear-gradient(rgba(102, 126, 234, 0.08) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(102, 126, 234, 0.08) 1px, transparent 1px);
-      background-size: 50px 50px;
-      opacity: 0.5;
+        linear-gradient(rgba(30, 35, 48, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(30, 35, 48, 0.03) 1px, transparent 1px);
+      background-size: 64px 64px;
+      opacity: 0.6;
       pointer-events: none;
       z-index: 0;
     }
 
-    /* 确保所有内容在背景之上 */
     body>* {
       position: relative;
       z-index: 1;
     }
 
-    /* 渐变动画 */
     @keyframes gradient-bg {
       0% {
         background-position: 0% 50%;
@@ -2397,7 +2330,6 @@
       }
     }
 
-    /* 浮动动画 */
     @keyframes float {
 
       0%,
@@ -2410,7 +2342,6 @@
       }
     }
 
-    /* 粒子动画 */
     @keyframes particle {
 
       0%,
@@ -2433,7 +2364,6 @@
       }
     }
 
-    /* 扫描线动画 */
     @keyframes scan {
       0% {
         transform: translateY(-100%);
@@ -2444,31 +2374,21 @@
       }
     }
 
-    /* 粒子样式 */
     .particle {
       position: fixed;
       width: 2px;
       height: 2px;
-      background: rgba(102, 126, 234, 0.6);
+      background: rgba(67, 56, 202, 0.22);
       border-radius: 50%;
       pointer-events: none;
       z-index: 0;
-      animation: particle 15s linear infinite;
+      animation: particle 22s linear infinite;
     }
 
-    /* 扫描线样式 */
     .scan-line {
-      position: fixed;
-      width: 100%;
-      height: 2px;
-      background: linear-gradient(90deg, transparent, rgba(102, 126, 234, 0.6), transparent);
-      box-shadow: 0 0 20px rgba(102, 126, 234, 0.6);
-      animation: scan 4s linear infinite;
-      pointer-events: none;
-      z-index: 0;
+      display: none;
     }
 
-    /* 浮动形状 */
     .floating-shape {
       position: fixed;
       border-radius: 50%;
@@ -2478,40 +2398,26 @@
       filter: blur(40px);
     }
 
-    /* ========== 覆盖主容器背景，应用炫酷效果 ========== */
-    /* 目标：<div class="min-h-screen bg-blue-50 bg-gradient-to-br from-blue-50 to-indigo-100 ..."> */
     .min-h-screen.bg-blue-50.bg-gradient-to-br {
-      background: linear-gradient(135deg, #f0f4ff 0%, #fce7f3 30%, #e0f2fe 60%, #f3e8ff 100%) !important;
+      background: #f7f8fa !important;
       position: relative !important;
       overflow: visible !important;
     }
 
-    /* 动态渐变背景层 - 彩虹色渐变 */
     .min-h-screen.bg-blue-50.bg-gradient-to-br::before {
       content: '' !important;
       position: fixed !important;
-      top: -50% !important;
-      left: -50% !important;
-      width: 200% !important;
-      height: 200% !important;
-      background: linear-gradient(135deg,
-          #667eea 0%,
-          #764ba2 15%,
-          #f093fb 30%,
-          #4facfe 45%,
-          #00f2fe 60%,
-          #43e97b 75%,
-          #fa709a 90%,
-          #667eea 100%) !important;
-      background-size: 400% 400% !important;
-      animation: gradient-bg 20s ease infinite !important;
-      opacity: 0.4 !important;
-      filter: blur(80px) !important;
+      top: -40% !important;
+      left: -30% !important;
+      width: 180% !important;
+      height: 180% !important;
+      background:
+        radial-gradient(closest-side at 20% 15%, rgba(67, 56, 202, 0.09), transparent 70%),
+        radial-gradient(closest-side at 85% 80%, rgba(67, 56, 202, 0.05), transparent 70%) !important;
       pointer-events: none !important;
       z-index: -2 !important;
     }
 
-    /* 网格背景 - 淡化（参考index.html的设定）*/
     .min-h-screen.bg-blue-50.bg-gradient-to-br::after {
       content: '' !important;
       position: fixed !important;
@@ -2520,39 +2426,31 @@
       right: 0 !important;
       bottom: 0 !important;
       background-image:
-        linear-gradient(rgba(102, 126, 234, 0.05) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(102, 126, 234, 0.05) 1px, transparent 1px) !important;
-      background-size: 50px 50px !important;
-      opacity: 0.3 !important;
+        linear-gradient(rgba(30, 35, 48, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(30, 35, 48, 0.03) 1px, transparent 1px) !important;
+      background-size: 64px 64px !important;
+      opacity: 0.5 !important;
       pointer-events: none !important;
       z-index: -1 !important;
     }
 
-    /* 确保主容器的子元素在背景之上 */
     .min-h-screen.bg-blue-50.bg-gradient-to-br>* {
       position: relative !important;
       z-index: 1 !important;
     }
 
-    /* ========== 返回首页按钮样式 ========== */
     .home-btn-text,
     span.home-btn-text {
       font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif !important;
       font-size: 0.95rem !important;
       font-weight: 500 !important;
-      letter-spacing: 0.08em !important;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 25%, #f093fb 50%, #4facfe 75%, #00f2fe 100%) !important;
-      background-size: 200% 200% !important;
-      -webkit-background-clip: text !important;
-      -webkit-text-fill-color: transparent !important;
-      background-clip: text !important;
-      animation: rainbow-flow 4s ease infinite !important;
+      letter-spacing: 0.02em !important;
+      color: #4338ca !important;
       text-rendering: optimizeLegibility !important;
       -webkit-font-smoothing: antialiased !important;
       -moz-osx-font-smoothing: grayscale !important;
     }
 
-    /* 通配符选择器 - 捕获所有可能的标题元素 */
     header span.font-bold.text-xl,
     header .font-bold.text-xl,
     header a span.font-bold,
@@ -2564,14 +2462,9 @@
     [role="banner"] .logo-title {
       font-family: 'Microsoft YaHei', 'PingFang SC', -apple-system, BlinkMacSystemFont, sans-serif !important;
       font-size: 1.5rem !important;
-      font-weight: 400 !important;
-      letter-spacing: 0.12em !important;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 25%, #f093fb 50%, #4facfe 75%, #00f2fe 100%) !important;
-      background-size: 200% 200% !important;
-      -webkit-background-clip: text !important;
-      -webkit-text-fill-color: transparent !important;
-      background-clip: text !important;
-      animation: rainbow-flow 4s ease infinite !important;
+      font-weight: 600 !important;
+      letter-spacing: -0.01em !important;
+      color: #1e2330 !important;
       text-rendering: optimizeLegibility !important;
       -webkit-font-smoothing: antialiased !important;
       -moz-osx-font-smoothing: grayscale !important;
@@ -2579,11 +2472,9 @@
       display: inline-block !important;
       padding: 0.5rem 1rem !important;
       border-radius: 12px !important;
-      transition: all 0.3s ease !important;
-      color: transparent !important;
+      transition: all 0.3s cubic-bezier(0.32, 0.72, 0, 1) !important;
     }
 
-    /* 悬停发光效果 */
     header span.font-bold.text-xl:hover,
     header .font-bold.text-xl:hover,
     [role="banner"] span.font-bold.text-xl:hover,
@@ -2594,7 +2485,6 @@
       filter: brightness(1.2) !important;
     }
 
-    /* 背景模糊玻璃效果 */
     header span.font-bold.text-xl::before,
     header .font-bold.text-xl::before,
     [role="banner"] span.font-bold.text-xl::before,
@@ -2622,7 +2512,6 @@
       opacity: 1 !important;
     }
 
-    /* ========== 卡片标题样式（添加发票文件、上传的文件、发票统计等） ========== */
     [data-slot="card-title"].leading-none.font-semibold,
     div[data-slot="card-title"] {
       font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif !important;
@@ -2631,25 +2520,17 @@
       letter-spacing: 0.08em !important;
     }
 
-    /* 只对文本节点应用渐变，保留正常文本颜色作为后备 */
     [data-slot="card-title"] {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 25%, #f093fb 50%, #4facfe 75%, #00f2fe 100%) !important;
-      background-size: 200% 200% !important;
-      -webkit-background-clip: text !important;
-      -webkit-text-fill-color: transparent !important;
-      background-clip: text !important;
-      animation: rainbow-flow 4s ease infinite !important;
+      color: #1e2330 !important;
+      -webkit-text-fill-color: #1e2330 !important;
       text-rendering: optimizeLegibility !important;
       -webkit-font-smoothing: antialiased !important;
       -moz-osx-font-smoothing: grayscale !important;
-      /* 后备颜色，防止不支持的浏览器显示空白 */
-      color: #1f2937 !important;
     }
 
-    /* 确保 SVG 图标正常显示 - 完全重置背景相关属性 */
     [data-slot="card-title"] svg {
-      -webkit-text-fill-color: #6366f1 !important;
-      color: #6366f1 !important;
+      -webkit-text-fill-color: #4338ca !important;
+      color: #4338ca !important;
       fill: none !important;
       stroke: currentColor !important;
       background: transparent !important;
@@ -2658,14 +2539,12 @@
       animation: none !important;
     }
 
-    /* 确保图标元素的路径可见 */
     [data-slot="card-title"] svg path,
     [data-slot="card-title"] svg rect,
     [data-slot="card-title"] svg circle {
-      stroke: #6366f1 !important;
+      stroke: #4338ca !important;
     }
 
-    /* 确保非 SVG 的子元素也显示正常 */
     [data-slot="card-title"]>*:not(svg) {
       background: inherit !important;
       -webkit-background-clip: inherit !important;
@@ -2673,7 +2552,6 @@
       -webkit-text-fill-color: inherit !important;
     }
 
-    /* 确保 span、button 等元素也应用样式 */
     [data-slot="card-title"] span:not([class*="sr-only"]),
     [data-slot="card-title"] button {
       background: inherit !important;
@@ -2682,63 +2560,44 @@
       -webkit-text-fill-color: inherit !important;
     }
 
-    /* ========== PDF预览控制按钮样式（放大、缩小、适应、下载、打印） ========== */
-    /* 针对卡片标题内的所有按钮和span */
     [data-slot="card-title"] button span,
     [data-slot="card-title"] button,
     [data-slot="card-header"] button span,
     [data-slot="card-header"] button {
       font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif !important;
       letter-spacing: 0.06em !important;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 25%, #f093fb 50%, #4facfe 75%, #00f2fe 100%) !important;
-      background-size: 200% 200% !important;
-      -webkit-background-clip: text !important;
-      -webkit-text-fill-color: transparent !important;
-      background-clip: text !important;
-      animation: rainbow-flow 4s ease infinite !important;
+      color: #3730a3 !important;
+      -webkit-text-fill-color: #3730a3 !important;
       text-rendering: optimizeLegibility !important;
       -webkit-font-smoothing: antialiased !important;
-      color: transparent !important;
     }
 
-    /* 控制区域的所有文字（包括百分比显示） */
     [data-slot="card-title"] .text-xs,
     [data-slot="card-title"] .text-sm,
     [data-slot="card-title"] span.text-xs,
     [data-slot="card-title"] span.text-sm {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 25%, #f093fb 50%, #4facfe 75%, #00f2fe 100%) !important;
-      background-size: 200% 200% !important;
-      -webkit-background-clip: text !important;
-      -webkit-text-fill-color: transparent !important;
-      background-clip: text !important;
-      animation: rainbow-flow 4s ease infinite !important;
-      color: transparent !important;
+      color: #6b7280 !important;
+      -webkit-text-fill-color: #6b7280 !important;
     }
 
-    /* 确保按钮图标正常显示 */
     [data-slot="card-title"] button svg,
     [data-slot="card-header"] button svg {
-      -webkit-text-fill-color: #6366f1 !important;
-      color: #6366f1 !important;
+      -webkit-text-fill-color: #4338ca !important;
+      color: #4338ca !important;
       background: transparent !important;
       -webkit-background-clip: border-box !important;
       background-clip: border-box !important;
       animation: none !important;
     }
 
-    /* ========== 5项功能标题样式 ========== */
     article h3.text-lg.font-semibold.text-gray-800,
     article .text-lg.font-semibold.text-gray-800 {
       font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif !important;
       font-size: 1.25rem !important;
-      font-weight: 500 !important;
-      letter-spacing: 0.08em !important;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 25%, #f093fb 50%, #4facfe 75%, #00f2fe 100%) !important;
-      background-size: 200% 200% !important;
-      -webkit-background-clip: text !important;
-      -webkit-text-fill-color: transparent !important;
-      background-clip: text !important;
-      animation: rainbow-flow 4s ease infinite !important;
+      font-weight: 600 !important;
+      letter-spacing: 0.04em !important;
+      color: #1e2330 !important;
+      -webkit-text-fill-color: #1e2330 !important;
       text-rendering: optimizeLegibility !important;
       -webkit-font-smoothing: antialiased !important;
       -moz-osx-font-smoothing: grayscale !important;
@@ -2746,30 +2605,27 @@
       display: inline-block !important;
       padding: 0.25rem 0.5rem !important;
       border-radius: 8px !important;
-      transition: all 0.3s ease !important;
-      color: transparent !important;
+      transition: all 0.4s cubic-bezier(0.32, 0.72, 0, 1) !important;
     }
 
-    /* 功能标题悬停效果 */
     article h3.text-lg.font-semibold.text-gray-800:hover,
     article .text-lg.font-semibold.text-gray-800:hover {
-      transform: translateY(-2px) scale(1.05) !important;
-      filter: brightness(1.2) !important;
+      transform: translateY(-1px) !important;
+      color: #4338ca !important;
+      -webkit-text-fill-color: #4338ca !important;
     }
 
-    /* 功能标题背景效果 */
     article h3.text-lg.font-semibold.text-gray-800::before,
     article .text-lg.font-semibold.text-gray-800::before {
       content: '' !important;
       position: absolute !important;
       inset: 0 !important;
       border-radius: 8px !important;
-      background: rgba(102, 126, 234, 0.08) !important;
-      backdrop-filter: blur(10px) !important;
-      border: 1px solid rgba(102, 126, 234, 0.25) !important;
+      background: rgba(67, 56, 202, 0.06) !important;
+      border: 1px solid rgba(67, 56, 202, 0.14) !important;
       z-index: -1 !important;
       opacity: 0 !important;
-      transition: opacity 0.3s ease !important;
+      transition: opacity 0.4s cubic-bezier(0.32, 0.72, 0, 1) !important;
     }
 
     article h3.text-lg.font-semibold.text-gray-800:hover::before,
@@ -2777,8 +2633,6 @@
       opacity: 1 !important;
     }
 
-    /* ========== 联系/反馈按钮样式（简洁版 - 参考 index.html）========== */
-    /* 联系容器 */
     .feedback-container {
       position: fixed;
       bottom: 1.5rem;
@@ -2790,7 +2644,6 @@
       gap: 0;
     }
 
-    /* 右下角浮动按钮 */
     .fab {
       width: 56px;
       height: 56px;
@@ -2821,7 +2674,6 @@
       height: 24px;
     }
 
-    /* 联系文字 - 彩虹渐变（使用最高优先级）*/
     .fab-text,
     .fab .fab-text,
     button.fab .fab-text,
@@ -2829,19 +2681,14 @@
       font-size: 0.75rem !important;
       font-weight: 500 !important;
       font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif !important;
-      letter-spacing: 0.08em !important;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 25%, #f093fb 50%, #4facfe 75%, #00f2fe 100%) !important;
-      background-size: 200% 200% !important;
-      -webkit-background-clip: text !important;
-      -webkit-text-fill-color: transparent !important;
-      background-clip: text !important;
-      animation: rainbow-flow 4s ease infinite !important;
+      letter-spacing: 0.06em !important;
+      color: #4338ca !important;
+      -webkit-text-fill-color: #4338ca !important;
       text-rendering: optimizeLegibility !important;
       -webkit-font-smoothing: antialiased !important;
       -moz-osx-font-smoothing: grayscale !important;
     }
 
-    /* 确保图标正常显示 */
     .fab svg,
     button.fab svg {
       -webkit-text-fill-color: currentColor !important;
@@ -2852,7 +2699,6 @@
       animation: none !important;
     }
 
-    /* 弹窗 */
     .feedback-popup {
       position: relative;
       width: 280px;
@@ -2908,7 +2754,6 @@
       line-height: 1.5;
     }
 
-    /* 移动端适配 */
     @media (max-width: 768px) {
       .feedback-popup {
         width: 260px;
@@ -2922,6 +2767,104 @@
         width: 100px;
         height: 100px;
       }
+    }
+
+    .min-h-screen.bg-blue-50.bg-gradient-to-br {
+      background: #f6f7f9 !important;
+    }
+
+    header.border-b.bg-white {
+      background: rgba(255,255,255,0.82) !important;
+      backdrop-filter: saturate(180%) blur(12px);
+      -webkit-backdrop-filter: saturate(180%) blur(12px);
+      border-bottom-color: #e9ebf1 !important;
+    }
+
+    [data-slot="card"] {
+      border-color: #e9ebf1 !important;
+      border-radius: 16px !important;
+      box-shadow: 0 4px 16px rgba(54,47,158,0.06), 0 1px 3px rgba(26,31,46,0.05) !important;
+      transition: box-shadow 0.4s cubic-bezier(0.32,0.72,0,1), border-color 0.4s cubic-bezier(0.32,0.72,0,1);
+    }
+    [data-slot="card"]:hover {
+      box-shadow: 0 12px 34px rgba(54,47,158,0.1), 0 2px 6px rgba(26,31,46,0.05) !important;
+    }
+
+    [aria-label="点击选择或拖拽上传PDF发票文件"] {
+      border-width: 2px !important;
+      border-color: #d3d6ec !important;
+      border-radius: 12px !important;
+      background: #f4f5fb !important;
+      padding: 2rem 1.5rem !important;
+      transition: all 0.35s cubic-bezier(0.32,0.72,0,1) !important;
+    }
+    [aria-label="点击选择或拖拽上传PDF发票文件"]:hover {
+      border-color: #4338ca !important;
+      background: #ecedf9 !important;
+      transform: translateY(-1px);
+    }
+    [aria-label="点击选择或拖拽上传PDF发票文件"] svg {
+      color: #4338ca !important;
+    }
+
+    section[aria-label="产品功能特色介绍"] > div {
+      max-width: 72rem !important;
+      display: grid !important;
+      grid-template-columns: repeat(5, 1fr) !important;
+      align-items: stretch !important;
+      gap: 14px !important;
+      padding: 22px !important;
+      background: #ffffff !important;
+      border-color: #e9ebf1 !important;
+      border-radius: 18px !important;
+      box-shadow: 0 4px 16px rgba(54,47,158,0.06) !important;
+    }
+    section[aria-label="产品功能特色介绍"] article {
+      max-width: none !important;
+      padding: 16px 14px !important;
+      border-radius: 12px !important;
+      background: #f6f7f9 !important;
+      border: 1px solid #eef0f4 !important;
+      transition: transform 0.4s cubic-bezier(0.32,0.72,0,1), box-shadow 0.4s cubic-bezier(0.32,0.72,0,1);
+    }
+    section[aria-label="产品功能特色介绍"] article:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 10px 26px rgba(54,47,158,0.1);
+    }
+
+    section[aria-label="产品功能特色介绍"] article > div:first-child {
+      flex-direction: column !important;
+      align-items: flex-start !important;
+      gap: 12px !important;
+      margin-bottom: 10px !important;
+    }
+    section[aria-label="产品功能特色介绍"] article svg {
+      color: #4338ca !important;
+      stroke: #4338ca !important;
+      width: 34px !important;
+      height: 34px !important;
+      padding: 6px !important;
+      border-radius: 10px !important;
+      background: #f4f5fb !important;
+      border: 1px solid #e9ebf1 !important;
+      box-sizing: border-box !important;
+    }
+    section[aria-label="产品功能特色介绍"] article h3 {
+      font-size: 1rem !important;
+      font-weight: 700 !important;
+      color: #1a1f2e !important;
+      letter-spacing: -0.01em !important;
+    }
+    section[aria-label="产品功能特色介绍"] article p {
+      color: #565c6b !important;
+      line-height: 1.55 !important;
+    }
+
+    @media (max-width: 900px) {
+      section[aria-label="产品功能特色介绍"] > div { grid-template-columns: repeat(2, 1fr) !important; }
+    }
+    @media (max-width: 520px) {
+      section[aria-label="产品功能特色介绍"] > div { grid-template-columns: 1fr !important; }
     }
   </style>
 </head>
@@ -3089,9 +3032,9 @@
       <div class="w-full h-full flex flex-col"></div>
     </div>
   </div>
-  <!--$--><!--/$--><!--$--><!--/$-->
+  
 
-  <!-- Floating Feedback Button - 简洁版（参考 index.html）-->
+  
   <div class="feedback-container">
     <div class="feedback-popup" id="feedbackPopup">
       <div class="feedback-content">
@@ -3160,7 +3103,7 @@
       '15:{"metadata":[["$","title","0",{"children":"发票打印助手"}],["$","meta","1",{"name":"description","content":"专业的电子发票处理解决方案，支持批量合并、自动统计、一键打印。让报销更简单，让财务更轻松。免费在线使用。"}],["$","meta","2",{"name":"author","content":"发票打印助手"}],["$","link","3",{"rel":"manifest","href":"/manifest.json","crossOrigin":"$undefined"}],["$","meta","4",{"name":"keywords","content":"电子发票,发票合并,发票处理,PDF合并,批量处理,财务工具,报销工具,发票统计,发票打印"}],["$","meta","5",{"name":"creator","content":"发票打印助手"}],["$","meta","6",{"name":"publisher","content":"发票打印助手"}],["$","meta","7",{"name":"robots","content":"index, follow"}],["$","meta","8",{"name":"apple-mobile-web-app-title","content":"发票打印助手"}],["$","meta","9",{"property":"og:title","content":"发票打印助手 - 让报销更简单，让财务更轻松"}],["$","meta","10",{"property":"og:description","content":"专业的电子发票处理解决方案，支持批量合并、自动统计、一键打印"}],["$","meta","11",{"property":"og:locale","content":"zh_CN"}],["$","meta","12",{"property":"og:type","content":"website"}],["$","meta","13",{"name":"twitter:card","content":"summary_large_image"}],["$","meta","14",{"name":"twitter:title","content":"发票打印助手"}],["$","meta","15",{"name":"twitter:description","content":"专业的电子发票处理解决方案，让报销更简单，让财务更轻松"}],["$","link","16",{"rel":"icon","href":"/favicon.ico","type":"image/x-icon","sizes":"48x48"}],["$","link","17",{"rel":"icon","href":"/icon0.svg?eb1262b39108723a","type":"image/svg+xml","sizes":"any"}],["$","link","18",{"rel":"icon","href":"/icon1.png?873064b22fb970bd","type":"image/png","sizes":"96x96"}],["$","link","19",{"rel":"apple-touch-icon","href":"/apple-icon.png?477d8be8c2b1658d","type":"image/png","sizes":"180x180"}]],"error":null,"digest":"$undefined"}\nf:{"metadata":"$15:metadata","error":null,"digest":"$undefined"}\n',
     ]);
   </script>
-  <!-- GitHub 链接动态插入脚本 -->
+  
   <script>
     (function () {
       function createGithubElements() {
@@ -3176,44 +3119,29 @@
         floatBtn.onmouseout = function () { this.style.background = '#24292e'; this.style.transform = 'translateY(0)'; this.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)'; };
         document.body.appendChild(floatBtn);
       }
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', createGithubElements);
-      } else {
-        createGithubElements();
+
+      function whenHydratedGH(cb) {
+        var tries = 0;
+        (function check() {
+          var probe = document.querySelector('.container.mx-auto.px-4.h-16.flex') || document.body;
+          var hydrated = probe && Object.keys(probe).some(function (k) {
+            return k.indexOf('__reactFiber') === 0 || k.indexOf('__reactProps') === 0;
+          });
+          if (hydrated || ++tries > 50) { cb(); return; }
+          setTimeout(check, 100);
+        })();
       }
-      setTimeout(createGithubElements, 1000);
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function () { whenHydratedGH(createGithubElements); });
+      } else {
+        whenHydratedGH(createGithubElements);
+      }
     })();
   </script>
   <script src="static/js/custom/print-guard.js" defer></script>
-  <!-- 发票打印助手 V6.0.0 | 新增：文件复制功能 + 打印反馈增强 | 禁用Next.js路由预加载 -->
+  
   <script>
-    (function () {
-      document.addEventListener('click', function (e) {
-        const link = e.target.closest('a');
-        if (link && link.href && (link.href.includes('index.html') || link.href.includes('main.html'))) {
-          e.stopPropagation();
-        }
-      }, true);
-      if (window.__NEXT_DATA__) delete window.__NEXT_DATA__;
-      const originalFetch = window.fetch;
-      window.fetch = async function (...args) {
-        const url = typeof args[0] === 'string' ? args[0] : args[0]?.url;
-        if (url && typeof url === 'string' && url.includes('.txt') && url.includes('_rsc=')) {
-          return new Response('', {
-            status: 200,
-            statusText: 'OK',
-            headers: { 'Content-Type': 'text/plain' }
-          });
-        }
-        return originalFetch.apply(this, args);
-      };
-    })();
-  </script>
-  <!-- 联系功能 -->
-  <script>
-    // ================================
-    // 5) 联系 / 反馈浮窗
-    // ================================
+
     const feedbackBtn = document.getElementById('feedbackBtn');
     const feedbackPopup = document.getElementById('feedbackPopup');
     if (feedbackBtn && feedbackPopup) {

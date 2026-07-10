@@ -5,11 +5,15 @@
 <IfModule mod_rewrite.c>
     RewriteEngine On
     RewriteBase /
-    
-    # 强制HTTPS (如果需要，取消注释下面两行)
-    # RewriteCond %{HTTPS} off
-    # RewriteRule ^(.*)$ https://%{HTTP_HOST}/$1 [R=301,L]
-    
+
+    # 强制 HTTPS
+    RewriteCond %{HTTPS} off
+    RewriteRule ^(.*)$ https://lcofo.cn/$1 [R=301,L]
+
+    # www → 非 www 归一化（权重集中，避免重复内容）
+    RewriteCond %{HTTP_HOST} ^www\.lcofo\.cn$ [NC]
+    RewriteRule ^(.*)$ https://lcofo.cn/$1 [R=301,L]
+
     # 如果请求的是实际存在的文件或目录,直接返回
     RewriteCond %{REQUEST_FILENAME} -f [OR]
     RewriteCond %{REQUEST_FILENAME} -d
@@ -20,6 +24,14 @@
     
     # 处理main路径
     RewriteRule ^main/?$ main.html [L]
+
+    # RSC 载荷 (Next.js *.txt) 404 回避: 不存在的 .txt 映射到同名 .html
+    # index.txt → index.html, main.txt → main.html（保持当前页面，不再强制回 main）
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteRule ^(.+)\.txt$ /$1.html [R=302,L]
+    # 兜底: 取不到具体名的 .txt 回到首页
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteRule \.txt$ /index.html [R=302,L]
 </IfModule>
 
 # 设置MIME类型
@@ -27,6 +39,7 @@
     AddType text/html .html
     AddType text/css .css
     AddType application/javascript .js
+    AddType application/javascript .mjs
     AddType application/json .json
     AddType image/svg+xml .svg
     AddType font/woff .woff

@@ -1,5 +1,8 @@
 {
   "dependencies": {
-    "pdf-lib": "^1.17.1"
+    "docx": "^9.6.1",
+    "markdown-it": "^14.1.1",
+    "pdf-lib": "^1.17.1",
+    "pdfkit": "^0.18.0"
   }
 }
