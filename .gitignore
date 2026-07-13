@@ -20,3 +20,7 @@ Thumbs.db
 desktop.ini
 .vscode/
 .idea/
+
+# 本地辅助脚本（不入库）
+同步到仓库.bat
+发布新版本.bat
