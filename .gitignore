@@ -21,6 +21,5 @@ desktop.ini
 .vscode/
 .idea/
 
-# 本地辅助脚本（不入库）
-同步到仓库.bat
-发布新版本.bat
+# 本地开发/辅助脚本（不入库）
+*.bat
