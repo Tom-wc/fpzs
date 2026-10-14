@@ -31,7 +31,7 @@
   <script>
     (function () {
       var CDN = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.8.69/pdf.worker.min.mjs';
-      var LOCAL = '/static/js/pdf.worker.min.mjs';
+      var LOCAL = 'static/js/pdf.worker.min.mjs';
       window.__PDF_WORKER_SRC = CDN;
       function apply(src) {
         window.__PDF_WORKER_SRC = src;
@@ -62,8 +62,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
-  <script></script>
-  <script src="static/js/custom/expense-report-core.js?v=2"></script>
+  <script src="static/js/custom/expense-report-core.js?v=20261014_02"></script>
   <script>
     (function () {
 
@@ -124,7 +123,13 @@
         return url;
       };
 
-      const { initPdfJs, extractInvoiceDataFromPdf } = window.__expenseReportCore || {};
+      function extractInvoiceDataFromPdf(name, file) {
+        if (window.__expenseReportCore && typeof window.__expenseReportCore.extractInvoiceDataFromPdf === 'function') {
+          return window.__expenseReportCore.extractInvoiceDataFromPdf(name, file);
+        }
+        console.warn('⚠️ 核心提取器准备中，使用保底提取');
+        return Promise.resolve({ amount: 0, date: new Date(), itemName: '电子发票', fileName: name });
+      }
 
       window.__invoiceDataCache = window.__invoiceDataCache || {};
 
@@ -203,6 +208,40 @@
         };
       }
 
+      const plateRe = /([京津沪渝冀豫云辽黑湘皖鲁新苏浙赣鄂桂甘晋蒙陕吉闽贵粤川青藏琼宁][A-HJ-NP-Z][A-HJ-NP-Z0-9]{4,6})/;
+      function extractPlate(name) {
+        const m = (name || '').match(plateRe);
+        return m ? m[1] : '';
+      }
+
+      function normalizeProject(raw, explicitPlate) {
+        if (window.__expenseReportCore && window.__expenseReportCore.smartNormalizeProject) {
+          const p = explicitPlate || extractPlate(raw);
+          return window.__expenseReportCore.smartNormalizeProject(raw, p);
+        }
+        let s = (raw || '').replace(plateRe, '').trim();
+        s = s.replace(/^[*＊][^*＊\n]+[*＊]/, '');
+        s = s.replace(/^[*＊]?[生生产]*生活服务[*＊]?/i, '')
+             .replace(/^[*＊]?现代服务[*＊]?/i, '')
+             .replace(/^[*＊]?交通运输[服务]*[*＊]?/i, '')
+             .replace(/^[*＊]?石油制品[*＊]?/i, '')
+             .trim();
+        const p = explicitPlate || extractPlate(raw);
+        if (/^火车票/.test(s)) return s;
+        if (/航空|机票|飞机票/.test(s)) return '飞机票';
+        if (/汽油|柴油|燃油|加油|92#|95#|98#|0#/.test(s)) return p ? '加油费 ' + p : '加油费';
+        if (/通行费|高速|过路|过桥|ETC/.test(s)) return p ? '通行费 ' + p : '通行费';
+        if (/停车|停放|泊车/.test(s)) return p ? '停车费 ' + p : '停车费';
+        if (/客运|打车|出租车|网约车|出行/.test(s)) return '客运服务费';
+        if (/餐饮|餐费|用餐|伙食|堂食|快餐|外卖/.test(s)) return '餐饮费';
+        if (/住宿|酒店|客房|房费/.test(s)) return '住宿费';
+        if (/办公用品|耗材|文具|打印纸|硒鼓/.test(s)) return '办公用品费';
+        if (/快递|物流|邮政|顺丰|货运/.test(s)) return '快递物流费';
+        if (/通讯|通信|话费|宽带/.test(s)) return '通讯费';
+        if (/会务|会议|培训/.test(s)) return '会务培训费';
+        return p ? (s || '电子发票') + ' ' + p : (s || '电子发票');
+      }
+
       async function getInvoiceDataFromApp() {
         await new Promise((r) => setTimeout(r, 300));
         let invoices = [];
@@ -269,19 +308,22 @@
 
                 const reactAmount = typeof inv.total === 'number' ? inv.total / 100 : null;
                 const amount = reactAmount ?? cached.amount ?? 0;
+                const rawName = cached.itemName || inv.itemName || inv.name || '电子发票';
+                const normName = normalizeProject(rawName);
                 console.log('🔎 React发票金额来源', {
                   fileName: inv.fileName,
                   reactTotal: inv.total,
                   reactAmount,
                   cachedAmount: cached.amount,
                   finalAmount: amount,
+                  normName,
                 });
                 return {
                   amount,
                   issueDate: cached.date || inv.date || new Date(),
                   date: cached.date || inv.date || new Date(),
-                  projectName: inv.itemName || inv.name || cached.itemName || '电子发票',
-                  itemName: inv.itemName || inv.name || cached.itemName || '电子发票',
+                  projectName: normName,
+                  itemName: normName,
                   fileName: inv.fileName || '',
                 };
               });
@@ -305,14 +347,17 @@
             const domStats = parseStatsFromDOM();
             const totalAmount = domStats.totalAmount !== null ? domStats.totalAmount : null;
             return {
-              invoices: cached.map((inv) => ({
-                amount: inv.amount,
-                issueDate: inv.date,
-                date: inv.date,
-                projectName: inv.itemName,
-                itemName: inv.itemName,
-                fileName: inv.fileName,
-              })),
+              invoices: cached.map((inv) => {
+                const norm = normalizeProject(inv.itemName || inv.projectName || '电子发票');
+                return {
+                  amount: inv.amount,
+                  issueDate: inv.date,
+                  date: inv.date,
+                  projectName: norm,
+                  itemName: norm,
+                  fileName: inv.fileName,
+                };
+              }),
               totalAmount,
               totalCount: cached.length,
             };
@@ -476,31 +521,11 @@
           deduped.push(inv);
         }
 
-        const plateRe = /([京津沪渝冀豫云辽黑湘皖鲁新苏浙赣鄂桂甘晋蒙陕吉闽贵粤川青藏琼宁][A-HJ-NP-Z][A-HJ-NP-Z0-9]{4,6})/;
-        function extractPlate(inv) {
-          const name = inv.projectName || inv.itemName || inv.name || '';
-          const m = name.match(plateRe);
-          return m ? m[1] : '';
-        }
-
-        function normalizeProject(raw) {
-          let name = raw.replace(plateRe, '').trim() || '电子发票';
-          if (name.includes('通行费')) name = '通行费';
-          else if (name.includes('客运') && name.includes('服务')) name = '客运服务费';
-          else if (name.includes('运输服务')) name = '运输服务';
-          return name;
-        }
-
-        function extractProject(inv) {
-          const name = inv.projectName || inv.itemName || inv.name || '电子发票';
-          return normalizeProject(name);
-        }
-
         const groupMap = new Map();
         for (const inv of deduped) {
-          const plate = extractPlate(inv);
-          const proj = extractProject(inv);
-          const gKey = plate + '||' + proj;
+          const rawName = inv.projectName || inv.itemName || inv.name || '电子发票';
+          const proj = normalizeProject(rawName);
+          const gKey = proj;
           const amt = Math.round((parseFloat(inv.amount) || 0) * 100);
 
           if (groupMap.has(gKey)) {
@@ -515,7 +540,7 @@
           } else {
             groupMap.set(gKey, {
               ...inv,
-              projectName: plate ? proj + ' ' + plate : proj,
+              projectName: proj,
               amountCents: amt,
               quantity: 1,
               issueDate: inv.issueDate || inv.date || new Date(),
@@ -2253,7 +2278,7 @@
 
   <meta name="description" content="在线电子发票合并打印工具：拖入多张 PDF 发票，自动排进 A4 版面，一次打印全部输出，自动统计金额、一键生成报销单。全程浏览器本地处理不上传，免费即开即用，无需注册下载。" />
   <meta name="author" content="发票打印助手" />
-  <link rel="manifest" href="/manifest.json" />
+  <link rel="manifest" href="manifest.json" />
   <meta name="keywords"
     content="电子发票合并,在线发票合并,PDF发票合并打印,发票批量打印,多张发票合并打印,发票合并成一个PDF,电子发票批量处理,发票A4排版,报销单生成,发票金额统计,发票打印工具,在线PDF合并,免费发票合并,发票处理工具" />
   <meta name="creator" content="发票打印助手" />
@@ -3100,7 +3125,7 @@
   <script>
     self.__next_f.push([
       1,
-      '15:{"metadata":[["$","title","0",{"children":"发票打印助手"}],["$","meta","1",{"name":"description","content":"专业的电子发票处理解决方案，支持批量合并、自动统计、一键打印。让报销更简单，让财务更轻松。免费在线使用。"}],["$","meta","2",{"name":"author","content":"发票打印助手"}],["$","link","3",{"rel":"manifest","href":"/manifest.json","crossOrigin":"$undefined"}],["$","meta","4",{"name":"keywords","content":"电子发票,发票合并,发票处理,PDF合并,批量处理,财务工具,报销工具,发票统计,发票打印"}],["$","meta","5",{"name":"creator","content":"发票打印助手"}],["$","meta","6",{"name":"publisher","content":"发票打印助手"}],["$","meta","7",{"name":"robots","content":"index, follow"}],["$","meta","8",{"name":"apple-mobile-web-app-title","content":"发票打印助手"}],["$","meta","9",{"property":"og:title","content":"发票打印助手 - 让报销更简单，让财务更轻松"}],["$","meta","10",{"property":"og:description","content":"专业的电子发票处理解决方案，支持批量合并、自动统计、一键打印"}],["$","meta","11",{"property":"og:locale","content":"zh_CN"}],["$","meta","12",{"property":"og:type","content":"website"}],["$","meta","13",{"name":"twitter:card","content":"summary_large_image"}],["$","meta","14",{"name":"twitter:title","content":"发票打印助手"}],["$","meta","15",{"name":"twitter:description","content":"专业的电子发票处理解决方案，让报销更简单，让财务更轻松"}],["$","link","16",{"rel":"icon","href":"/favicon.ico","type":"image/x-icon","sizes":"48x48"}],["$","link","17",{"rel":"icon","href":"/icon0.svg?eb1262b39108723a","type":"image/svg+xml","sizes":"any"}],["$","link","18",{"rel":"icon","href":"/icon1.png?873064b22fb970bd","type":"image/png","sizes":"96x96"}],["$","link","19",{"rel":"apple-touch-icon","href":"/apple-icon.png?477d8be8c2b1658d","type":"image/png","sizes":"180x180"}]],"error":null,"digest":"$undefined"}\nf:{"metadata":"$15:metadata","error":null,"digest":"$undefined"}\n',
+      '15:{"metadata":[["$","title","0",{"children":"发票打印助手"}],["$","meta","1",{"name":"description","content":"专业的电子发票处理解决方案，支持批量合并、自动统计、一键打印。让报销更简单，让财务更轻松。免费在线使用。"}],["$","meta","2",{"name":"author","content":"发票打印助手"}],["$","link","3",{"rel":"manifest","href":"manifest.json","crossOrigin":"$undefined"}],["$","meta","4",{"name":"keywords","content":"电子发票,发票合并,发票处理,PDF合并,批量处理,财务工具,报销工具,发票统计,发票打印"}],["$","meta","5",{"name":"creator","content":"发票打印助手"}],["$","meta","6",{"name":"publisher","content":"发票打印助手"}],["$","meta","7",{"name":"robots","content":"index, follow"}],["$","meta","8",{"name":"apple-mobile-web-app-title","content":"发票打印助手"}],["$","meta","9",{"property":"og:title","content":"发票打印助手 - 让报销更简单，让财务更轻松"}],["$","meta","10",{"property":"og:description","content":"专业的电子发票处理解决方案，支持批量合并、自动统计、一键打印"}],["$","meta","11",{"property":"og:locale","content":"zh_CN"}],["$","meta","12",{"property":"og:type","content":"website"}],["$","meta","13",{"name":"twitter:card","content":"summary_large_image"}],["$","meta","14",{"name":"twitter:title","content":"发票打印助手"}],["$","meta","15",{"name":"twitter:description","content":"专业的电子发票处理解决方案，让报销更简单，让财务更轻松"}],["$","link","16",{"rel":"icon","href":"favicon.ico","type":"image/x-icon","sizes":"48x48"}],["$","link","17",{"rel":"icon","href":"icon0.svg?eb1262b39108723a","type":"image/svg+xml","sizes":"any"}],["$","link","18",{"rel":"icon","href":"icon1.png?873064b22fb970bd","type":"image/png","sizes":"96x96"}],["$","link","19",{"rel":"apple-touch-icon","href":"apple-icon.png?477d8be8c2b1658d","type":"image/png","sizes":"180x180"}]],"error":null,"digest":"$undefined"}\nf:{"metadata":"$15:metadata","error":null,"digest":"$undefined"}\n',
     ]);
   </script>
   

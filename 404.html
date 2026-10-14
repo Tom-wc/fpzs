@@ -122,10 +122,10 @@
         <p>抱歉,您访问的页面不存在或已被移除</p>
         
         <div class="buttons">
-            <a href="/index.html" class="btn btn-primary">
+            <a href="index.html" class="btn btn-primary">
                 <span>返回首页</span>
             </a>
-            <a href="/main.html" class="btn btn-secondary">
+            <a href="main.html" class="btn btn-secondary">
                 <span>使用工具</span>
             </a>
         </div>
@@ -145,14 +145,14 @@
         // 自动重定向逻辑
         const path = window.location.pathname;
         
-        // 如果访问根路径,重定向到首页
-        if (path === '/' || path === '') {
-            window.location.href = '/index.html';
+        // 如果访问根路径或仓库目录,重定向到首页
+        if (path === '/' || path === '' || path.endsWith('/')) {
+            window.location.href = 'index.html';
         }
         
         // 如果访问main相关路径,重定向到功能页
         if (path.includes('main')) {
-            window.location.href = '/main.html';
+            window.location.href = 'main.html';
         }
         
         // 记录404错误(如果有分析工具)

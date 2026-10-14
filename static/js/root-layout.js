@@ -1,4 +1,4 @@
-﻿(self.webpackChunk_N_E = self.webpackChunk_N_E || []).push([
+(self.webpackChunk_N_E = self.webpackChunk_N_E || []).push([
   [177],
   {
     347: () => {},
@@ -192,7 +192,7 @@
                           (0, a.jsx)("div", {
                             className: "mb-3",
                             children: (0, a.jsx)(m.default, {
-                              src: "/static/picture/qywxkf.png",
+                              src: "static/picture/qywxkf.png",
                               alt: "工程师微信二维码",
                               width: 128,
                               height: 128,
