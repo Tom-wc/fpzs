@@ -572,6 +572,24 @@
         }
       }
       var _pendingFiles = {};
+      var _usedBySize = Object.create(null);
+      var _usedBySizeMerge = Object.create(null);
+      function _pickFileBySize(size, usedMap) {
+        var fallback = null;
+        for (var k in _pendingFiles) {
+          var f = _pendingFiles[k];
+          if (!f || f.size !== size) continue;
+          if (!fallback) fallback = { file: f, name: k };
+          if (!usedMap[k]) { usedMap[k] = 1; return { file: f, name: k }; }
+        }
+        if (fallback) return fallback;
+        if (window.__fileDebugCache) {
+          for (var pair of window.__fileDebugCache.entries()) {
+            if (pair[1] && pair[1].size === size) return { file: pair[1], name: pair[0] };
+          }
+        }
+        return null;
+      }
       async function R(e, t) {
         return { code: 0, result: !1 };
       }
@@ -582,16 +600,8 @@
       }
       async function O(e, t) {
         let inv = null, file = null, fname = "";
-        for (let k of Object.keys(_pendingFiles)) {
-          if (_pendingFiles[k] && _pendingFiles[k].size === t) {
-            file = _pendingFiles[k]; fname = k; break;
-          }
-        }
-        if (!file && window.__fileDebugCache) {
-          for (let [n, f] of window.__fileDebugCache.entries()) {
-            if (f.size === t) { file = f; fname = n; break; }
-          }
-        }
+        const _picked = _pickFileBySize(t, _usedBySize);
+        if (_picked) { file = _picked.file; fname = _picked.name; }
         if (file && window.__invoiceDataCache && window.__invoiceDataCache[fname]) {
           inv = window.__invoiceDataCache[fname];
         }
@@ -661,14 +671,8 @@
 
           for (var item of e) {
             var file = null;
-            for (var k of Object.keys(_pendingFiles)) {
-              if (_pendingFiles[k] && _pendingFiles[k].size === item.size) { file = _pendingFiles[k]; break; }
-            }
-            if (!file && window.__fileDebugCache) {
-              for (var [, f] of window.__fileDebugCache.entries()) {
-                if (f.size === item.size) { file = f; break; }
-              }
-            }
+            var _mp = _pickFileBySize(item.size, _usedBySizeMerge);
+            if (_mp) file = _mp.file;
             if (!file) { console.warn('合并: 未找到文件 size=', item.size); continue; }
             var buf = await file.arrayBuffer();
             var src = await PDFLib.PDFDocument.load(buf, { ignoreEncryption: true });
